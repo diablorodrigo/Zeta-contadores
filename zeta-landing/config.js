@@ -3,7 +3,7 @@
  */
 const ZETA_CONFIG = {
   platformName: "Zeta Finance",
-  adminWhatsapp: "5491100000000", // Teléfono de Zeta Finance (formato internacional sin +)
+  adminWhatsapp: "5493496462977", // Teléfono de Zeta Finance (formato internacional sin +)
   googleSheetWebhookUrl: "https://script.google.com/macros/s/AKfycby0gRVsJhZb7O47pdyYmzlCitexqvoVINYcXoUhd9oz4wLLzplihfc_h7wXtCTRssPI/exec", // URL de Google Apps Script para sincronización de leads
 
   // Sincronización automática de tasas de mercado

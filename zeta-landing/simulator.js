@@ -815,80 +815,18 @@ function formatNumber(num) {
 ========================================================== */
 
 function openLeadModal() {
+  const waLink = document.getElementById('link-whatsapp-opcional');
+  const waPhone = String(ZETA_CONFIG.adminWhatsapp || '').replace(/\D/g, '');
+  if (waLink && waPhone) {
+    waLink.href = `https://wa.me/${waPhone}`;
+  }
+
   document.getElementById('lead-modal').classList.remove('hidden');
   if (window.lucide) lucide.createIcons();
 }
 
 function closeLeadModal() {
   document.getElementById('lead-modal').classList.add('hidden');
-}
-
-function sendToWhatsapp() {
-  const company = document.getElementById('lead-company').value.trim();
-  const name = document.getElementById('lead-name').value.trim();
-  const phone = document.getElementById('lead-phone').value.trim();
-  const notes = document.getElementById('lead-notes').value.trim();
-
-  if (!company || !name || !phone) {
-    alert("Por favor complete los campos obligatorios (Empresa, Contacto y Teléfono) antes de enviar.");
-    return;
-  }
-
-  const studioName = activeStudio ? activeStudio.name : "Estudio Aliado";
-  const studioPin = activeStudio ? activeStudio.pin : "N/A";
-  const currPrefix = currentCurrency === 'USD' ? 'US$' : '$';
-  const rendimiento = Math.round(currentCapital * (activeTNA / 100) * (currentPlazo / 365));
-
-  const lecapTicker = ZETA_CONFIG.marketRates?.lecapDetails?.ticker || "S30N6";
-  const lecapVto = ZETA_CONFIG.marketRates?.lecapDetails?.vencimiento || "30/11/2026";
-
-  const instNames = {
-    caucion: "Caución Bursátil (Garantía BYMA)",
-    lecap: `LECAP Corta - Ticker ${lecapTicker} (Vto: ${lecapVto})`,
-    plazofijo: "Plazo Fijo Tradicional",
-    usd: "Renta Corporativa en USD (5% Fijo)"
-  };
-
-  const message = 
-`💼 *SOLICITUD DE APERTURA & COLOCACIÓN DE LIQUIDEZ*
-────────────────────────────────
-📌 *Derivado por:* ${studioName} (PIN: ${studioPin})
-🏢 *Empresa / PyME:* ${company}
-👤 *Contacto:* ${name}
-📞 *Teléfono:* ${phone}
-${notes ? `📝 *Detalle:* ${notes}\n` : ''}────────────────────────────────
-📊 *PARÁMETROS DE LA ESTRATEGIA:*
-• *Moneda:* ${currentCurrency}
-• *Instrumento:* ${instNames[selectedInstrument] || selectedInstrument}
-• *Capital a Colocar:* ${currPrefix}${formatNumber(currentCapital)}
-• *Plazo Sugerido:* ${currentPlazo} días
-• *TNA de Referencia:* ${activeTNA}%
-• *Rendimiento Calculado:* +${currPrefix}${formatNumber(rendimiento)}
-────────────────────────────────
-_Generado desde la plataforma de tesorería corporativa para estudios aliados._`;
-
-  const phoneDestino = ZETA_CONFIG.adminWhatsapp || "5491100000000";
-  const waUrl = `https://wa.me/${phoneDestino}?text=${encodeURIComponent(message)}`;
-
-  saveLeadToSheet({
-    studio: studioName,
-    pin: studioPin,
-    currency: currentCurrency,
-    instrument: selectedInstrument,
-    company,
-    name,
-    phone,
-    notes,
-    capital: currentCapital,
-    plazo: currentPlazo,
-    rendimiento,
-    tna: activeTNA,
-    fecha: new Date().toISOString()
-  });
-
-  window.open(waUrl, '_blank');
-  closeLeadModal();
-  showToast("Redirigiendo a WhatsApp de Mesa de Operaciones...");
 }
 
 function handleLeadSubmit(event) {
@@ -919,7 +857,7 @@ function handleLeadSubmit(event) {
   });
 
   closeLeadModal();
-  showToast(`Prospecto de ${company} guardado exitosamente`);
+  showToast('Listo, te contactamos por WhatsApp');
   document.getElementById('lead-form').reset();
 }
 
@@ -929,10 +867,12 @@ function saveLeadToSheet(leadData) {
     return;
   }
 
+  // Mismo JSON de siempre. text/plain es un header simple: con no-cors el browser
+  // deja salir el POST. application/json lo rechaza antes de llegar al Sheet.
   fetch(ZETA_CONFIG.googleSheetWebhookUrl, {
     method: 'POST',
     mode: 'no-cors',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
     body: JSON.stringify(leadData)
   }).then(() => {
     console.log("[Zeta Finance] Lead sincronizado con Google Sheets.");
