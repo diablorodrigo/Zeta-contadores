@@ -46,5 +46,11 @@ Abre el archivo [**`index.html`**](file:///C:/Users/crist/.gemini/antigravity/sc
 
 ## 🌐 Publicación en Vercel
 
+URL canónica: **https://zeta-contadores-zeta-landing.vercel.app/**
+
+El proyecto de Vercel tiene como Root Directory la carpeta `zeta-landing`. Ahí responden la home y `/api/rates`.
+
+`zetatesoreria.vercel.app` da 404: no usarla. Si más adelante se quiere un dominio corto, se puede apuntar un alias en Vercel hacia este mismo proyecto.
+
 1. Sube esta carpeta (`zeta-landing`) a GitHub o arrástrala a Vercel.
 2. Vercel reconocerá automáticamente la carpeta `/api` y activará la función serverless de tasas en `/api/rates`.

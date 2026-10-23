@@ -4,7 +4,7 @@ Fecha: 23 de octubre de 2026.
 Repo: [diablorodrigo/Zeta-contadores](https://github.com/diablorodrigo/Zeta-contadores).  
 App: carpeta `zeta-landing/`.  
 URL en vivo: [zeta-contadores-zeta-landing.vercel.app](https://zeta-contadores-zeta-landing.vercel.app/).  
-URL vieja, sigue en 404: [zetatesoreria.vercel.app](https://zetatesoreria.vercel.app). El campo Website del repo en GitHub apunta a esa.
+URL vieja, no usar: [zetatesoreria.vercel.app](https://zetatesoreria.vercel.app) da 404. El Website del repo en GitHub ya apunta a la URL canónica.
 
 Este documento es un diagnóstico de producto y de código. No cambia la lógica del simulador. No se publicó nada en Vercel y no se escribió ningún lead en el Google Sheet.
 
@@ -14,7 +14,7 @@ La terminal ya está armada de punta a punta en el código, y **el deploy bueno 
 
 Lo que todavía no cierra para un estudio real:
 
-- El link que figura en GitHub (About → Website) es `https://zetatesoreria.vercel.app`, y esa URL sigue en **404**. Es otro proyecto de Vercel, con la raíz del repo como Root Directory: la página quedó colgada en `/zeta-landing/` y `/api/rates` ahí no existe.
+- El Website del repo ya es la URL canónica. `zetatesoreria.vercel.app` sigue en **404**: es otro proyecto de Vercel, con la raíz del repo como Root Directory. La página quedó colgada en `/zeta-landing/` y `/api/rates` ahí no existe. No usarla. Un dominio corto, si hace falta, se resuelve con un alias de Vercel sobre el proyecto bueno.
 - En la URL buena, `/api/rates` marcó una sola fuente viva: plazo fijo **22,4%**. Caución y LECAP salieron del fallback (caución 20,5–23,5%; LECAP **S30N6 al 26,5%**). El front, con un 200, pinta igual el cartel verde de “tasas en vivo” para las tres.
 - El WhatsApp apunta a `5491100000000`. El Google Sheet no recibe datos: el Apps Script publicado contesta que no tiene `doGet`, y el envío del navegador está armado de una forma que el browser no deja salir.
 
@@ -74,7 +74,7 @@ El nombre `zeta-contadores-zeta-landing` es el proyecto cuyo Root Directory ya e
 
 `zetatesoreria.vercel.app` es otro proyecto, con Root Directory en la raíz del repo. En la raíz no hay `index.html` ni `api/`, por eso la home da 404 y la función nunca se construye. El front de `/zeta-landing/` llama a `/api/rates` (path absoluto), recibe 404, y no cae al camino directo de ArgentinaDatos (ese camino solo corre si el `fetch` revienta). Ahí el cartel queda ámbar, “mercado cerrado”, con los números de `config.js`.
 
-El campo **Website** del repo en GitHub (`homepage`) sigue en `https://zetatesoreria.vercel.app`. El README del código no nombra ese dominio; el link roto está en el About del repo, que es lo que se ve en la portada de GitHub.
+El campo **Website** del repo en GitHub (`homepage`) quedó en `https://zeta-contadores-zeta-landing.vercel.app/` (confirmado por la API del repo el 23/10/2026, después de que Cristian lo actualizó). `zetatesoreria.vercel.app` da 404: no usarla. Si más adelante se quiere un dominio corto, se puede apuntar un alias en Vercel hacia el proyecto canónico.
 
 ### Tasas — vivo contra fallback
 
@@ -148,7 +148,7 @@ No hice POST. El código del POST, igual, tiene dos trabas para cuando el script
 
 ### P0 — Sin esto el link que se comparte, o el número que se ve, están mal
 
-1. **El link público.** La app viva es `https://zeta-contadores-zeta-landing.vercel.app/`. El Website del repo en GitHub sigue en `https://zetatesoreria.vercel.app`, que responde 404. Hay que cambiar ese campo (About del repo) y cualquier otro lado donde se haya pasado el dominio viejo. Ese proyecto viejo tiene el Root Directory en la raíz del repo; no es el que hay que “arreglar” para salir a producción. Si alguien ya tiene el dominio viejo guardado, un redirect al proyecto bueno evita el 404.
+1. **El link público.** Hecho en el repo: el Website de GitHub ya es `https://zeta-contadores-zeta-landing.vercel.app/`. `zetatesoreria.vercel.app` da 404 y no hay que usarla (es el proyecto con Root Directory en la raíz del repo). Si más adelante se quiere un dominio corto, se apunta un alias en Vercel sobre el proyecto canónico. Si alguien ya guardó el dominio viejo, un redirect evita el 404.
 2. **Tasas que se muestran.** En la URL buena, `/api/rates` ya corre y solo declaró `plazofijo_live` (22,4%). La LECAP que ve el contador es 26,5%; S30N6 hoy está en 23,0% y la letra a 7 días (S30O6) en 20,05%. La caución salió del fallback porque el endpoint devolvió `[]`. El cartel verde no mira `sourcesChecked`. El mapa sembrado en 35–38% hay que corregirlo antes de que la caución vuelva a traer filas.
 3. **Llegada del caso.** Apps Script con `doGet` (estudios) y `doPost` (fila de lead) sobre un Sheet de prueba. POST del front con un body simple (`text/plain`), que es lo que el browser puede mandar sin preflight. Recién con un alta de prueba que aparezca en la hoja, apuntar la URL de producción. WhatsApp con tu número real, o sacar ese botón hasta tenerlo.
 
@@ -170,7 +170,7 @@ No hice POST. El código del POST, igual, tiene dos trabas para cuando el script
 
 Cinco pasos. El primero alinea el link con el deploy que ya funciona. El segundo y el tercero hacen que el número y el caso sean usables. El cuarto es lo que te deja mostrarlo como Zeta / CNV. El quinto es la pasada de pantalla.
 
-1. **Compartir la URL que ya responde y corregir el Website de GitHub.** Dejá como canónica `https://zeta-contadores-zeta-landing.vercel.app/` (ahí `/` y `/api/rates` ya andan). En el About del repo, cambiá `https://zetatesoreria.vercel.app` por esa. El proyecto viejo puede quedar, con un redirect, o darse de baja: su 404 viene de tener el Root Directory en la raíz del repo.
+1. **URL canónica, ya apuntada desde GitHub.** Compartir `https://zeta-contadores-zeta-landing.vercel.app/` (ahí `/` y `/api/rates` ya andan). El Website del repo ya quedó en esa URL. `zetatesoreria.vercel.app` da 404: no usarla. Un dominio corto, si hace falta, es un alias de Vercel sobre este proyecto. El proyecto viejo puede quedar con un redirect, o darse de baja.
 2. **Corregir la lectura de tasas y el cartel.** Sacar la semilla 35–38. Tomar la LECAP del JSON de letras (vencimiento, TNA, volumen) y retirar el scrape de Rava. Actualizar el fallback de S30N6 (hoy la función sirve 26,5% con `success: true`). Pintar verde solo la tasa que vino en `sourcesChecked`: hoy eso es solo el plazo fijo, 22,4%. Dejar escrito en la barra que caución, letra y plazo fijo se refrescan cuando la fuente publica, y que el job corre cada 30 minutos.
 3. **Cerrar Sheet + WhatsApp en un Sheet de prueba.** `doGet` / `doPost`, POST en `text/plain`, una fila real de prueba, tu celular en `adminWhatsapp`, y sacar de la pantalla los botones `4829` y `1042`.
 4. **Dejar la puerta y el texto publicables.** PIN fuera del JavaScript (chequeo en el server, sin listar estudios al browser). Pie visible: simulación de interés simple, sin comisiones ni impuestos, no es consejo de inversión, operador Zeta Finance CNV 2103. Reemplazar “intereses netos” y “riesgo cero”. Definir si FCI entra ahora.
