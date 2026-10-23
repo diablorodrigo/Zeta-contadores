@@ -550,22 +550,26 @@
           >
         </div>
 
-        <div class="pt-3 space-y-2">
-          <button 
-            type="button" 
-            onclick="sendToWhatsapp()" 
-            class="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] text-white font-bold text-sm transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2"
-          >
-            <i data-lucide="message-circle" class="w-4 h-4"></i>
-            <span>Enviar a Mesa de Operaciones por WhatsApp</span>
-          </button>
-
+        <div class="pt-3 space-y-3">
           <button 
             type="submit" 
-            class="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition border border-slate-700"
+            class="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] text-white font-bold text-sm transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2"
           >
-            Guardar en Registro Interno
+            <i data-lucide="send" class="w-4 h-4"></i>
+            <span>Enviar solicitud</span>
           </button>
+          <p class="text-center text-[11px] text-slate-500">
+            La guardamos en el registro y te contactamos por WhatsApp.
+          </p>
+          <a
+            id="link-whatsapp-opcional"
+            href="https://wa.me/5493496462977"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="block text-center text-xs text-slate-400 hover:text-slate-200 underline underline-offset-2"
+          >
+            Si preferís, escribir por WhatsApp
+          </a>
         </div>
       </form>
     </div>
@@ -574,7 +578,7 @@
   <!-- Toast -->
   <div id="toast" class="hidden fixed bottom-6 right-6 z-50 bg-slate-900 border border-slate-700 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 text-sm">
     <i data-lucide="check-circle" class="w-5 h-5 text-emerald-400"></i>
-    <span id="toast-message">Prospecto registrado exitosamente</span>
+    <span id="toast-message">Listo, te contactamos por WhatsApp</span>
   </div>
 
   <script src="config.js"></script>

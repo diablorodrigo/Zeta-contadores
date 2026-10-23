@@ -16,7 +16,7 @@ Lo que todavía no cierra para un estudio real:
 
 - El Website del repo ya es la URL canónica. `zetatesoreria.vercel.app` sigue en **404**: es otro proyecto de Vercel, con la raíz del repo como Root Directory. La página quedó colgada en `/zeta-landing/` y `/api/rates` ahí no existe. No usarla. Un dominio corto, si hace falta, se resuelve con un alias de Vercel sobre el proyecto bueno.
 - En la URL buena, `/api/rates` marcó una sola fuente viva: plazo fijo **22,4%**. Caución y LECAP salieron del fallback (caución 20,5–23,5%; LECAP **S30N6 al 26,5%**). El front, con un 200, pinta igual el cartel verde de “tasas en vivo” para las tres.
-- El WhatsApp apunta a `5491100000000`. El Google Sheet no recibe datos: el Apps Script publicado contesta que no tiene `doGet`, y el envío del navegador está armado de una forma que el browser no deja salir.
+- El número de aviso es `5493496462977`. El canal de la solicitud es el Sheet: «Enviar solicitud» guarda el lead y muestra «Listo, te contactamos por WhatsApp». No abre `wa.me` solo. El Apps Script, en el GET de solo lectura de esta revisión, contestó que no tiene `doGet`. El POST ahora sale como `text/plain` con el mismo JSON.
 
 ## 1. Qué hay en el repo
 
@@ -44,8 +44,8 @@ URL
   → rendimiento = capital × (TNA / 100) × (días / 365), redondeado
   → "Solicitar Asesoramiento / Apertura"
   → modal: empresa, contacto, teléfono, notas
-       → botón grande: WhatsApp a adminWhatsapp + intento de guardar en el Sheet
-       → botón chico: "Guardar en Registro Interno" (solo el Sheet)
+       → botón principal: "Enviar solicitud" (Sheet + toast «Listo, te contactamos por WhatsApp»)
+       → link chico, opcional: "Si preferís, escribir por WhatsApp" (wa.me del número de config, sin guardar solo)
 ```
 
 Instrumentos en pesos: caución bursátil (tasa según el plazo), LECAP corta, plazo fijo. En dólares: una tasa comercial fija del 5% anual. No hay FCI en la pantalla, aunque el circuito de negocio que describiste incluye caución, letra corta y FCI.
@@ -137,12 +137,12 @@ El refresh cada 30 minutos reconsulta eso. Plazo fijo y letras, en las fuentes d
 
 El deployment existe y es anónimo. El script no expone la función que el front llama al cargar y al validar un PIN nuevo. Los estudios que se ven son los tres de `config.js`. El `res.json()` falla, el `catch` se lo traga, y el PIN de demo sigue andando.
 
-No hice POST. El código del POST, igual, tiene dos trabas para cuando el script exista:
+No hice POST. El body sigue siendo el mismo JSON. El header pasó a `text/plain;charset=UTF-8` con `mode: 'no-cors'`, que es un request simple y el browser lo deja salir. Dos límites que quedan:
 
-1. `saveLeadToSheet` manda `Content-Type: application/json` con `mode: 'no-cors'`. Ese header no está en la lista que el browser permite en `no-cors`, así que el `fetch` falla en el cliente y el JSON no sale.
-2. El toast dice “guardado exitosamente” (o abre WhatsApp) sin mirar si el POST llegó. Con `no-cors` la respuesta es opaca: aunque el envío saliera, la pantalla no puede saber si el Sheet lo anotó.
+1. Con `no-cors` la pantalla no lee la respuesta. El toast sale igual, haya fila o no.
+2. El GET de estudios sigue dependiendo de un `doGet` que en el chequeo no estaba.
 
-`adminWhatsapp` es `5491100000000`. Los dos botones del modal terminan, o en ese número, o en un POST que hoy no tiene `doGet`/`doPost` del otro lado.
+`adminWhatsapp` es `5493496462977`. El botón principal del modal es «Enviar solicitud» y no abre WhatsApp. Queda un link opcional a `wa.me` con ese número, aparte del guardado.
 
 ## 4. Gaps para el puntapié, en orden
 
@@ -150,13 +150,13 @@ No hice POST. El código del POST, igual, tiene dos trabas para cuando el script
 
 1. **El link público.** Hecho en el repo: el Website de GitHub ya es `https://zeta-contadores-zeta-landing.vercel.app/`. `zetatesoreria.vercel.app` da 404 y no hay que usarla (es el proyecto con Root Directory en la raíz del repo). Si más adelante se quiere un dominio corto, se apunta un alias en Vercel sobre el proyecto canónico. Si alguien ya guardó el dominio viejo, un redirect evita el 404.
 2. **Tasas que se muestran.** En la URL buena, `/api/rates` ya corre y solo declaró `plazofijo_live` (22,4%). La LECAP que ve el contador es 26,5%; S30N6 hoy está en 23,0% y la letra a 7 días (S30O6) en 20,05%. La caución salió del fallback porque el endpoint devolvió `[]`. El cartel verde no mira `sourcesChecked`. El mapa sembrado en 35–38% hay que corregirlo antes de que la caución vuelva a traer filas.
-3. **Llegada del caso.** Apps Script con `doGet` (estudios) y `doPost` (fila de lead) sobre un Sheet de prueba. POST del front con un body simple (`text/plain`), que es lo que el browser puede mandar sin preflight. Recién con un alta de prueba que aparezca en la hoja, apuntar la URL de producción. WhatsApp con tu número real, o sacar ese botón hasta tenerlo.
+3. **Llegada del caso.** El front ya manda el JSON en `text/plain` al webhook, y el número de aviso es `5493496462977`. Falta confirmar que el Apps Script tenga `doPost` y que una solicitud de prueba aparezca en la hoja. `doGet` (estudios) seguía sin existir en el chequeo de solo lectura.
 
 ### P1 — Antes de pasarle el link a un estudio
 
 4. **PIN.** Los de demo (`4829` Pérez, `1042` Gómez, `9999` Zeta) están en el JavaScript público, en el README y, dos de ellos, como botones en la pantalla de ingreso. La URL `?pin=` abre la terminal sin tipear. No hay intento fallido, ni vencimiento, ni chequeo de servidor: es una puerta en el browser. Para producción los PIN no pueden vivir en `config.js`. Un endpoint que responda sí/no (sin devolver el listado entero) alcanza para esta versión. El `getStudios` actual, el día que funcione, le entrega todos los PIN a cualquiera que llame la URL.
 5. **Texto regulatorio y de la simulación.** En el HTML no aparece CNV, la matrícula 2103, ni una línea de “esto es una simulación, no es consejo de inversión”. El cálculo es interés simple bruto a 365 días: sin comisiones, sin impuestos, sin el plazo real de la letra. La tarjeta igual dice “Intereses netos que ingresan a la cuenta comitente”. La caución dice “Riesgo cero de crédito”. Hay “Apertura 100% bonificada” y, en dólares, “Liquidación en dólares billete”. La tabla dice “ordenado por rendimiento” y el orden está fijo (LECAP, caución, plazo fijo, cuenta corriente). Con menos de 30 días el plazo fijo figura N/A en la tabla y se puede elegir igual, y el número se calcula.
-6. **Una sola salida del caso.** El negocio que contaste es: el cliente acepta, carga datos, y al compartir te llega el Sheet para que vos contactes y gestiones. En la UI el botón grande es WhatsApp al placeholder y el Sheet es el botón chico. Conviene una sola acción “Compartir”, que escriba la fila y confirme solo cuando la fila existe. WhatsApp puede quedar como aviso tuyo, con tu número.
+6. **Una sola salida del caso.** El botón principal ya es «Enviar solicitud»: escribe el Sheet y avisa con el toast. WhatsApp quedó como link opcional, con el número `5493496462977`, y no se abre solo. El toast confirma igual, sin leer si la fila entró (el POST es `no-cors`).
 
 ### P2 — Cierre de experiencia
 
@@ -172,10 +172,10 @@ Cinco pasos. El primero alinea el link con el deploy que ya funciona. El segundo
 
 1. **URL canónica, ya apuntada desde GitHub.** Compartir `https://zeta-contadores-zeta-landing.vercel.app/` (ahí `/` y `/api/rates` ya andan). El Website del repo ya quedó en esa URL. `zetatesoreria.vercel.app` da 404: no usarla. Un dominio corto, si hace falta, es un alias de Vercel sobre este proyecto. El proyecto viejo puede quedar con un redirect, o darse de baja.
 2. **Corregir la lectura de tasas y el cartel.** Sacar la semilla 35–38. Tomar la LECAP del JSON de letras (vencimiento, TNA, volumen) y retirar el scrape de Rava. Actualizar el fallback de S30N6 (hoy la función sirve 26,5% con `success: true`). Pintar verde solo la tasa que vino en `sourcesChecked`: hoy eso es solo el plazo fijo, 22,4%. Dejar escrito en la barra que caución, letra y plazo fijo se refrescan cuando la fuente publica, y que el job corre cada 30 minutos.
-3. **Cerrar Sheet + WhatsApp en un Sheet de prueba.** `doGet` / `doPost`, POST en `text/plain`, una fila real de prueba, tu celular en `adminWhatsapp`, y sacar de la pantalla los botones `4829` y `1042`.
+3. **Confirmar una fila real en el Sheet.** El número ya es `5493496462977` y el POST del front va en `text/plain` con el mismo JSON. Falta ver que `doPost` anote la fila. Los botones de PIN demo (`4829` y `1042`) siguen en la pantalla de ingreso.
 4. **Dejar la puerta y el texto publicables.** PIN fuera del JavaScript (chequeo en el server, sin listar estudios al browser). Pie visible: simulación de interés simple, sin comisiones ni impuestos, no es consejo de inversión, operador Zeta Finance CNV 2103. Reemplazar “intereses netos” y “riesgo cero”. Definir si FCI entra ahora.
 5. **Una pasada mobile del comparador y del modal**, y dejar de depender de `cdn.tailwindcss.com` y de `lucide@latest` sin pin. El link ya abre; esta pasada es para mandárselo a un estudio sin que se le desarme en el teléfono.
 
 ## Qué quedó afuera a propósito
 
-No se cambió código de negocio. No se hizo POST al Apps Script ni se abrió WhatsApp. No se contrastó la caución contra la pantalla de BYMA: la fuente del propio código devolvió un array vacío, y `/api/rates` en la URL buena dejó la escala de fallback. No se recorrió la UI en un celular; los puntos de mobile salen del layout del HTML. El GET a `/api/rates` es de solo lectura.
+No se tocó la lógica de tasas, los PIN demo ni un disclaimer CNV. No se hizo POST de prueba al Apps Script. No se contrastó la caución contra la pantalla de BYMA. No se recorrió la UI en un celular. El GET a `/api/rates` fue de solo lectura.
