@@ -4,9 +4,11 @@
 
 let activeStudio = null;
 let currentCurrency = 'ARS'; // 'ARS' o 'USD'
-let selectedInstrument = 'caucion'; // 'caucion', 'lecap', 'plazofijo', 'usd'
+let selectedInstrument = 'caucion'; // 'caucion', 'lecap', 'plazofijo', 'usd', 'cheques'
 let currentCapital = 5000000;
 let currentPlazo = 7;
+let liquidityPlazo = 7;
+let chequePlazoDays = 90;
 let activeTNA = 21.5;
 
 // Inicialización al cargar la página
@@ -21,6 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   setupPinBoxes();
   setupEventListeners();
+  initChequeControls();
   renderQuickCapitalButtons();
   updateInstrumentRates();
   checkUrlParams();
@@ -436,6 +439,10 @@ function applyStudioBranding(studio) {
 ========================================================== */
 
 function setCurrency(currency) {
+  if (selectedInstrument === 'cheques') {
+    chequePlazoDays = currentPlazo;
+    currentPlazo = liquidityPlazo;
+  }
   currentCurrency = currency;
   const btnArs = document.getElementById('btn-currency-ars');
   const btnUsd = document.getElementById('btn-currency-usd');
@@ -483,16 +490,20 @@ function setCurrency(currency) {
 
   renderQuickCapitalButtons();
   updateInstrumentVisuals();
-  calculateYield();
+  syncChequeMode();
+  setPlazo(currentPlazo);
 }
 
 function renderQuickCapitalButtons() {
   const container = document.getElementById('quick-capital-container');
   container.innerHTML = '';
 
-  const options = currentCurrency === 'USD' 
+  const chequeMode = currentCurrency === 'ARS' && selectedInstrument === 'cheques';
+  const options = currentCurrency === 'USD'
     ? [5000, 10000, 25000, 50000, 100000]
-    : [1000000, 5000000, 10000000, 25000000, 50000000];
+    : chequeMode
+      ? [10000000, 25000000, 50000000, 100000000, 150000000]
+      : [1000000, 5000000, 10000000, 25000000, 50000000];
 
   options.forEach(amount => {
     const btn = document.createElement('button');
@@ -500,7 +511,9 @@ function renderQuickCapitalButtons() {
     btn.className = 'px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition';
     const label = currentCurrency === 'USD'
       ? `+US$${amount >= 1000 ? (amount/1000) + 'K' : amount}`
-      : `+$${amount >= 1000000 ? (amount/1000000) + 'M' : amount}`;
+      : chequeMode
+        ? `$${amount >= 1000000 ? (amount/1000000) + 'M' : amount}`
+        : `+$${amount >= 1000000 ? (amount/1000000) + 'M' : amount}`;
     btn.textContent = label;
     btn.onclick = () => setCapital(amount);
     container.appendChild(btn);
@@ -509,7 +522,18 @@ function renderQuickCapitalButtons() {
 
 function selectInstrument(inst) {
   if (currentCurrency === 'USD') return;
+  const wasCheque = selectedInstrument === 'cheques';
   selectedInstrument = inst;
+
+  if (inst === 'cheques') {
+    if (!wasCheque) {
+      liquidityPlazo = currentPlazo;
+      currentPlazo = chequePlazoDays;
+    }
+  } else if (wasCheque) {
+    chequePlazoDays = currentPlazo;
+    currentPlazo = liquidityPlazo;
+  }
 
   if (inst === 'caucion') {
     updateCaucionRateForDays(currentPlazo);
@@ -519,9 +543,14 @@ function selectInstrument(inst) {
     activeTNA = ZETA_CONFIG.marketRates.plazoFijoTNA;
   }
 
-  document.getElementById('input-active-tna').value = activeTNA;
+  if (inst !== 'cheques') {
+    document.getElementById('input-active-tna').value = activeTNA;
+  }
+
+  syncChequeMode();
+  renderQuickCapitalButtons();
   updateInstrumentVisuals();
-  calculateYield();
+  setPlazo(currentPlazo);
 }
 
 function updateCaucionRateForDays(days) {
@@ -556,7 +585,7 @@ function updateInstrumentRates() {
     if (vto && rates.lecapDetails.vencimiento) vto.textContent = rates.lecapDetails.vencimiento;
   }
 
-  updateCaucionRateForDays(currentPlazo);
+  updateCaucionRateForDays(selectedInstrument === 'cheques' ? liquidityPlazo : currentPlazo);
 }
 
 function updateInstrumentVisuals() {
@@ -569,9 +598,11 @@ function updateInstrumentVisuals() {
   const btnCaucion = document.getElementById('btn-inst-caucion');
   const btnLecap = document.getElementById('btn-inst-lecap');
   const btnPlazo = document.getElementById('btn-inst-plazofijo');
+  const btnCheques = document.getElementById('btn-inst-cheques');
   const badge = document.getElementById('active-instrument-badge');
 
-  [btnCaucion, btnLecap, btnPlazo].forEach(b => {
+  [btnCaucion, btnLecap, btnPlazo, btnCheques].forEach(b => {
+    if (!b) return;
     b.className = "p-3.5 rounded-2xl border text-left transition relative bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700";
   });
 
@@ -588,6 +619,10 @@ function updateInstrumentVisuals() {
     btnPlazo.className = "p-3.5 rounded-2xl border text-left transition relative bg-amber-500/10 border-amber-500 text-white";
     badge.textContent = "Plazo Fijo Tradicional";
     badge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30";
+  } else if (selectedInstrument === 'cheques' && btnCheques) {
+    btnCheques.className = "p-3.5 rounded-2xl border text-left transition relative bg-violet-500/10 border-violet-500 text-white";
+    badge.textContent = "Descuento de cheques";
+    badge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-violet-500/20 text-violet-300 border border-violet-500/30";
   }
 }
 
@@ -620,6 +655,22 @@ function setupEventListeners() {
       calculateYield();
     }
   });
+
+  ['cheque-bank-label', 'cheque-tna-bank', 'cheque-tna-zeta'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', () => {
+      if (isChequeMode()) calculateYield();
+    });
+  });
+
+  const plazoExact = document.getElementById('input-plazo-cheque');
+  if (plazoExact) {
+    plazoExact.addEventListener('input', () => {
+      const n = parseInt(plazoExact.value, 10);
+      if (!isNaN(n)) setPlazo(n);
+    });
+  }
 }
 
 function setCapital(amount) {
@@ -629,28 +680,45 @@ function setCapital(amount) {
 }
 
 function setPlazo(days) {
-  currentPlazo = days;
-  document.getElementById('slider-plazo').value = days;
-  document.getElementById('display-plazo').textContent = `${days} días`;
+  const max = isChequeMode() ? 180 : 35;
+  let safe = parseInt(days, 10);
+  if (!isFinite(safe) || safe < 1) safe = 1;
+  if (safe > max) safe = max;
+  currentPlazo = safe;
+  if (isChequeMode()) chequePlazoDays = safe;
+  else if (currentCurrency === 'ARS') liquidityPlazo = safe;
 
-  // Actualizar estilo visual de las píldoras de plazo
-  document.querySelectorAll('.plazo-pill').forEach(btn => {
-    const d = parseInt(btn.getAttribute('data-days'), 10);
-    if (d === days) {
-      btn.classList.add('border-blue-500', 'bg-blue-500/10');
-      btn.classList.remove('border-slate-700', 'bg-slate-800');
-    } else {
-      btn.classList.remove('border-blue-500', 'bg-blue-500/10');
-      btn.classList.add('border-slate-700', 'bg-slate-800');
-    }
-  });
+  const slider = document.getElementById('slider-plazo');
+  if (slider) {
+    slider.max = String(max);
+    slider.value = String(safe);
+  }
+  const plazoExact = document.getElementById('input-plazo-cheque');
+  if (plazoExact && String(plazoExact.value) !== String(safe)) {
+    plazoExact.value = String(safe);
+  }
+  document.getElementById('display-plazo').textContent = `${safe} días`;
+  updatePlazoPills();
 
-  // Si está en ARS y el instrumento es caución, actualizar su tasa escalonada
-  if (currentCurrency === 'ARS') {
-    updateCaucionRateForDays(days);
+  if (currentCurrency === 'ARS' && selectedInstrument !== 'cheques') {
+    updateCaucionRateForDays(safe);
   }
 
   calculateYield();
+}
+
+function updatePlazoPills() {
+  const activeBorder = isChequeMode() ? 'border-violet-500' : 'border-blue-500';
+  const activeBg = isChequeMode() ? 'bg-violet-500/10' : 'bg-blue-500/10';
+  document.querySelectorAll('.plazo-pill').forEach(btn => {
+    const d = parseInt(btn.getAttribute('data-days'), 10);
+    btn.classList.remove('border-blue-500', 'bg-blue-500/10', 'border-violet-500', 'bg-violet-500/10', 'border-slate-700', 'bg-slate-800');
+    if (d === currentPlazo) {
+      btn.classList.add(activeBorder, activeBg);
+    } else {
+      btn.classList.add('border-slate-700', 'bg-slate-800');
+    }
+  });
 }
 
 /**
@@ -658,6 +726,14 @@ function setPlazo(days) {
  * Rendimiento = Capital * (TNA / 100) * (Días / 365)
  */
 function calculateYield() {
+  if (isChequeMode()) {
+    renderChequeExperience();
+    return;
+  }
+
+  const gananciaLabel = document.getElementById('modal-ganancia-label');
+  if (gananciaLabel) gananciaLabel.textContent = 'Rendimiento';
+
   const currPrefix = currentCurrency === 'USD' ? 'US$' : '$';
   const rendimiento = Math.round(currentCapital * (activeTNA / 100) * (currentPlazo / 365));
   const capitalFinal = currentCapital + rendimiento;
@@ -811,6 +887,342 @@ function formatNumber(num) {
 }
 
 /* ==========================================================
+   3b. DESCUENTO DE CHEQUES (Banco vs Propuesta Zeta)
+   Fórmulas: cheque-discount.js
+========================================================== */
+
+function isChequeMode() {
+  return currentCurrency === 'ARS' && selectedInstrument === 'cheques';
+}
+
+function syncChequeMode() {
+  const on = isChequeMode();
+  const toggle = (id, show) => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('hidden', !show);
+  };
+
+  toggle('cheque-rate-overrides', on);
+  toggle('cheque-plazo-direct', on);
+  toggle('plazo-pills-cheques', on);
+  toggle('plazo-pills-liquidity', !on);
+  toggle('cheque-comparison-card', on);
+  toggle('cheque-result-stack', on);
+  toggle('tna-adjust-row', !on);
+  toggle('multiasset-table-card', !on);
+  toggle('liquidity-result-card', !on);
+  toggle('liquidity-opportunity-card', !on);
+
+  const capitalLabel = document.getElementById('label-capital-input');
+  const capitalHint = document.getElementById('label-capital-hint');
+  const plazoLabel = document.getElementById('label-plazo');
+  if (on) {
+    if (capitalLabel) capitalLabel.textContent = 'Monto a descontar';
+    if (capitalHint) capitalHint.textContent = 'Valor nominal del cheque';
+    if (plazoLabel) plazoLabel.textContent = 'Plazo del cheque (días)';
+  } else if (currentCurrency === 'ARS') {
+    if (capitalLabel) capitalLabel.textContent = 'Capital a Rentabilizar';
+    if (capitalHint) capitalHint.textContent = 'Mínimo sugerido: $500.000 ARS';
+    if (plazoLabel) plazoLabel.textContent = 'Horizonte de Tiempo (Días)';
+  } else {
+    if (capitalLabel) capitalLabel.textContent = 'Capital a Rentabilizar';
+    if (capitalHint) capitalHint.textContent = 'Tasa corporativa fija: 5% anual en dólares';
+    if (plazoLabel) plazoLabel.textContent = 'Horizonte de Tiempo (Días)';
+  }
+
+  const slider = document.getElementById('slider-plazo');
+  if (slider) {
+    slider.max = on ? '180' : '35';
+    slider.classList.toggle('accent-violet-500', on);
+    slider.classList.toggle('accent-blue-500', !on);
+  }
+}
+
+function getChequeConfig() {
+  const cfg = (typeof ZETA_CONFIG !== 'undefined' && ZETA_CONFIG.chequeDiscount) || {};
+  return {
+    bankLabel: cfg.bankLabel || 'Banco',
+    bank: {
+      tnaDesc: numberOr(cfg.bank && cfg.bank.tnaDesc, 27.5),
+      derechosPct: numberOr(cfg.bank && cfg.bank.derechosPct, 0.06),
+      tnaArancel: numberOr(cfg.bank && cfg.bank.tnaArancel, 1)
+    },
+    zeta: {
+      tnaDesc: numberOr(cfg.zeta && cfg.zeta.tnaDesc, 25.5),
+      derechosPct: numberOr(cfg.zeta && cfg.zeta.derechosPct, 0.05),
+      tnaArancel: numberOr(cfg.zeta && cfg.zeta.tnaArancel, 0.7)
+    },
+    iva: numberOr(cfg.iva, 0.21)
+  };
+}
+
+function numberOr(value, fallback) {
+  const n = Number(value);
+  return isFinite(n) ? n : fallback;
+}
+
+function readOptionalNumber(id, fallback) {
+  const el = document.getElementById(id);
+  if (!el) return fallback;
+  const raw = String(el.value).trim().replace(',', '.');
+  if (raw === '') return fallback;
+  const n = parseFloat(raw);
+  if (!isFinite(n) || n < 0) return fallback;
+  return n;
+}
+
+function initChequeControls() {
+  const cfg = getChequeConfig();
+  const label = document.getElementById('cheque-bank-label');
+  const bankTna = document.getElementById('cheque-tna-bank');
+  const zetaTna = document.getElementById('cheque-tna-zeta');
+  if (label) {
+    label.value = cfg.bankLabel;
+    label.placeholder = cfg.bankLabel;
+  }
+  if (bankTna) bankTna.value = String(cfg.bank.tnaDesc);
+  if (zetaTna) zetaTna.value = String(cfg.zeta.tnaDesc);
+
+  const bankExtras = document.getElementById('cheque-bank-extras');
+  const zetaExtras = document.getElementById('cheque-zeta-extras');
+  if (bankExtras) {
+    bankExtras.textContent = `Derechos ${formatPercentPoints(cfg.bank.derechosPct)} · Arancel ${formatPercentPoints(cfg.bank.tnaArancel)} TNA (config.js)`;
+  }
+  if (zetaExtras) {
+    zetaExtras.textContent = `Derechos ${formatPercentPoints(cfg.zeta.derechosPct)} · Arancel ${formatPercentPoints(cfg.zeta.tnaArancel)} TNA (config.js)`;
+  }
+
+  const plazoExact = document.getElementById('input-plazo-cheque');
+  if (plazoExact) plazoExact.value = String(chequePlazoDays);
+}
+
+function getChequeScenario() {
+  const cfg = getChequeConfig();
+  const labelInput = document.getElementById('cheque-bank-label');
+  const typedLabel = labelInput ? labelInput.value.trim() : '';
+  const bankLabel = typedLabel || cfg.bankLabel;
+  const bankRates = { ...cfg.bank, tnaDesc: readOptionalNumber('cheque-tna-bank', cfg.bank.tnaDesc) };
+  const zetaRates = { ...cfg.zeta, tnaDesc: readOptionalNumber('cheque-tna-zeta', cfg.zeta.tnaDesc) };
+  const bank = calcChequeQuote(currentCapital, currentPlazo, bankRates, cfg.iva);
+  const zeta = calcChequeQuote(currentCapital, currentPlazo, zetaRates, cfg.iva);
+
+  let conviene = 'No comparable';
+  let winner = null;
+  if (bank.cftEfectivo != null && zeta.cftEfectivo != null) {
+    const diff = zeta.cftEfectivo - bank.cftEfectivo;
+    if (Math.abs(diff) < 1e-10) {
+      conviene = 'Empate';
+      winner = 'empate';
+    } else if (diff < 0) {
+      conviene = 'Propuesta Zeta';
+      winner = 'zeta';
+    } else {
+      conviene = bankLabel;
+      winner = 'banco';
+    }
+  } else if (zeta.cftEfectivo != null) {
+    conviene = 'Propuesta Zeta';
+    winner = 'zeta';
+  } else if (bank.cftEfectivo != null) {
+    conviene = bankLabel;
+    winner = 'banco';
+  }
+
+  return {
+    bankLabel,
+    bank,
+    zeta,
+    conviene,
+    winner,
+    monto: currentCapital,
+    plazo: currentPlazo
+  };
+}
+
+function renderChequeExperience() {
+  const scenario = getChequeScenario();
+  const grid = document.getElementById('cheque-comparison-grid');
+  if (grid) {
+    grid.innerHTML = [
+      renderChequeSideCard('banco', scenario.bankLabel, scenario.bank, scenario),
+      renderChequeSideCard('zeta', 'Propuesta Zeta', scenario.zeta, scenario)
+    ].join('');
+  }
+
+  const winnerQuote = scenario.winner === 'banco' ? scenario.bank : scenario.zeta;
+  const winnerName = scenario.winner === 'banco'
+    ? scenario.bankLabel
+    : (scenario.winner === 'empate' ? 'Empate' : 'Propuesta Zeta');
+
+  setText('cheque-hero-cft', scenario.winner === 'empate'
+    ? formatRatioPct(scenario.zeta.cftEfectivo)
+    : formatRatioPct(winnerQuote.cftEfectivo));
+  setText('cheque-hero-subtitle', scenario.winner === 'empate'
+    ? 'Mismo CFT efectivo. El indicador para comparar las dos propuestas.'
+    : `${winnerName} · indicador para comparar las dos propuestas.`);
+  setText('cheque-winner-badge', scenario.conviene === 'Empate' || scenario.conviene === 'No comparable'
+    ? scenario.conviene
+    : `Conviene ${scenario.conviene}`);
+  setText('cheque-hero-monto', formatMoneyARS(scenario.monto));
+  setText('cheque-hero-zeta', formatMoneyARS(scenario.zeta.montoRecibido));
+  setText('cheque-hero-bank-label', `Recibe con ${scenario.bankLabel}`);
+  setText('cheque-hero-bank', formatMoneyARS(scenario.bank.montoRecibido));
+
+  const delta = scenario.zeta.montoRecibido - scenario.bank.montoRecibido;
+  if (Math.abs(delta) < 0.005) {
+    setText('cheque-hero-delta-label', 'Diferencia de neto');
+    setText('cheque-hero-delta', formatMoneyARS(0));
+  } else if (delta > 0) {
+    setText('cheque-hero-delta-label', 'A favor de Zeta');
+    setText('cheque-hero-delta', formatMoneyARS(delta));
+  } else {
+    setText('cheque-hero-delta-label', `A favor de ${scenario.bankLabel}`);
+    setText('cheque-hero-delta', formatMoneyARS(Math.abs(delta)));
+  }
+
+  setText('modal-instrumento', 'Descuento de cheques');
+  setText('modal-capital-plazo', `${formatMoneyARS(scenario.monto)} • ${scenario.plazo}d`);
+  setText('modal-ganancia-label', 'Conviene');
+  const pct = scenario.winner === 'banco' ? scenario.bank.cftEfectivoPct : scenario.zeta.cftEfectivoPct;
+  setText('modal-ganancia', pct == null ? scenario.conviene : `${scenario.conviene} · ${formatPercentPoints(pct)}`);
+}
+
+function renderChequeSideCard(key, title, quote, scenario) {
+  const won = scenario.winner === key;
+  const border = won
+    ? 'border-emerald-500 bg-emerald-500/10'
+    : 'border-slate-800 bg-slate-950/40';
+  const cftClass = won ? 'text-emerald-400' : 'text-white';
+  const badge = won
+    ? '<span class="shrink-0 text-[10px] font-bold uppercase tracking-wide text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full">Conviene</span>'
+    : '';
+
+  return `
+    <article class="min-w-0 rounded-2xl border p-4 ${border}">
+      <div class="flex items-start justify-between gap-2 mb-3">
+        <div class="min-w-0">
+          <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500">${key === 'zeta' ? 'Propuesta' : 'Banco'}</p>
+          <h5 class="font-bold text-white text-sm leading-snug">${escapeHtml(title)}</h5>
+          <p class="text-[11px] text-slate-400 mt-0.5">TNA descuento ${formatPercentPoints(quote.tnaDesc)}</p>
+        </div>
+        ${badge}
+      </div>
+      <div class="space-y-1.5 text-xs">
+        ${chequeMoneyRow('Descuento financiero', quote.descuentoFinanciero)}
+        ${chequeMoneyRow('Derechos de mercado + IVA', quote.derechosIva)}
+        ${chequeMoneyRow('Arancel + IVA', quote.arancelIva)}
+        ${chequeMoneyRow('Total costos', quote.totalCostos, true)}
+      </div>
+      <div class="mt-3 rounded-xl ${won ? 'bg-emerald-500/15' : 'bg-slate-800/80'} px-3 py-2.5 flex items-center justify-between gap-2">
+        <span class="text-[11px] font-bold uppercase tracking-wide ${won ? 'text-emerald-200' : 'text-slate-300'}">Monto recibido</span>
+        <span class="font-mono font-bold ${won ? 'text-emerald-300' : 'text-white'} text-sm text-right">${formatMoneyARS(quote.montoRecibido)}</span>
+      </div>
+      <div class="mt-3 space-y-1.5 text-xs">
+        ${chequePctRow('Costo del período', quote.costoPeriodo)}
+        ${chequePctRow('CFT nominal anual', quote.cftNominal)}
+      </div>
+      <div class="mt-3 pt-3 border-t border-slate-800/80">
+        <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500">CFT efectivo anual</p>
+        <p class="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight ${cftClass}">${formatRatioPct(quote.cftEfectivo)}</p>
+        <p class="text-[10px] text-slate-500">Indicador para comparar</p>
+      </div>
+    </article>
+  `;
+}
+
+function chequeMoneyRow(label, amount, strong) {
+  return `<div class="flex items-baseline justify-between gap-3">
+    <span class="${strong ? 'text-slate-200 font-semibold' : 'text-slate-400'}">${label}</span>
+    <span class="font-mono ${strong ? 'font-bold text-white' : 'text-slate-200'} text-right">${formatMoneyARS(amount)}</span>
+  </div>`;
+}
+
+function chequePctRow(label, ratio) {
+  return `<div class="flex items-baseline justify-between gap-3">
+    <span class="text-slate-400">${label}</span>
+    <span class="font-mono text-slate-200 text-right">${formatRatioPct(ratio)}</span>
+  </div>`;
+}
+
+function setText(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
+function formatPercentPoints(points) {
+  const n = Number(points);
+  if (!isFinite(n)) return '—';
+  return n.toFixed(2).replace('.', ',') + '%';
+}
+
+function formatRatioPct(ratio) {
+  if (ratio == null || !isFinite(ratio)) return '—';
+  return (ratio * 100).toFixed(2).replace('.', ',') + '%';
+}
+
+function formatMoneyARS(num) {
+  if (num == null || !isFinite(num)) return '—';
+  const negative = num < -0.004;
+  const abs = Math.abs(num);
+  const parts = abs.toFixed(2).split('.');
+  const withDots = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return (negative ? '-$' : '$') + withDots + ',' + parts[1];
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function buildLeadPayload(contact) {
+  const base = {
+    studio: activeStudio ? activeStudio.name : 'Estudio Aliado',
+    pin: activeStudio ? activeStudio.pin : 'N/A',
+    currency: currentCurrency,
+    instrument: selectedInstrument,
+    company: contact.company,
+    name: contact.name,
+    phone: contact.phone,
+    notes: contact.notes,
+    capital: currentCapital,
+    plazo: currentPlazo,
+    fecha: new Date().toISOString()
+  };
+
+  if (isChequeMode()) {
+    const scenario = getChequeScenario();
+    const cftBanco = scenario.bank.cftEfectivoPct;
+    const cftZeta = scenario.zeta.cftEfectivoPct;
+    return {
+      ...base,
+      currency: 'ARS',
+      instrument: 'descuento_cheques',
+      monto: roundMoney(scenario.monto),
+      plazo: scenario.plazo,
+      bankLabel: scenario.bankLabel,
+      cftNominalBanco: scenario.bank.cftNominalPct,
+      cftEfectivoBanco: cftBanco,
+      cftNominalZeta: scenario.zeta.cftNominalPct,
+      cftEfectivoZeta: cftZeta,
+      montoRecibidoBanco: roundMoney(scenario.bank.montoRecibido),
+      montoRecibidoZeta: roundMoney(scenario.zeta.montoRecibido),
+      conviene: scenario.conviene,
+      tnaBanco: scenario.bank.tnaDesc,
+      tnaZeta: scenario.zeta.tnaDesc,
+      tna: scenario.zeta.tnaDesc,
+      rendimiento: Math.round(scenario.zeta.montoRecibido - scenario.bank.montoRecibido),
+      resumen: `Descuento de cheques · ${scenario.bankLabel} CFT ef. ${formatRatioPct(scenario.bank.cftEfectivo)} · Zeta CFT ef. ${formatRatioPct(scenario.zeta.cftEfectivo)} · Conviene: ${scenario.conviene}`
+    };
+  }
+
+  const rendimiento = Math.round(currentCapital * (activeTNA / 100) * (currentPlazo / 365));
+  return { ...base, rendimiento, tna: activeTNA };
+}
+
+/* ==========================================================
    4. MODAL Y CONVERSIÓN DE PROSPECTO (LEADS CON MARCA)
 ========================================================== */
 
@@ -836,25 +1248,7 @@ function handleLeadSubmit(event) {
   const phone = document.getElementById('lead-phone').value.trim();
   const notes = document.getElementById('lead-notes').value.trim();
 
-  const studioName = activeStudio ? activeStudio.name : "Estudio Aliado";
-  const studioPin = activeStudio ? activeStudio.pin : "N/A";
-  const rendimiento = Math.round(currentCapital * (activeTNA / 100) * (currentPlazo / 365));
-
-  saveLeadToSheet({
-    studio: studioName,
-    pin: studioPin,
-    currency: currentCurrency,
-    instrument: selectedInstrument,
-    company,
-    name,
-    phone,
-    notes,
-    capital: currentCapital,
-    plazo: currentPlazo,
-    rendimiento,
-    tna: activeTNA,
-    fecha: new Date().toISOString()
-  });
+  saveLeadToSheet(buildLeadPayload({ company, name, phone, notes }));
 
   closeLeadModal();
   showToast('Listo, te contactamos por WhatsApp');

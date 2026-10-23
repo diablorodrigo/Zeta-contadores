@@ -30,6 +30,29 @@ Plataforma corporativa de colocación de liquidez transitoria con control de acc
 - **LECAP Corta:** Tasa de mayor rendimiento en pesos en torno al **~26.5% TNA** (TIR de mercado secundario).
 - **Plazo Fijo Tradicional:** **~19.5% TNA** (promedio grandes bancos BNA / Galicia / Santander, inmovilizado a 30 días).
 - **Dólares (USD):** Toggle de moneda en el encabezado con colocación fija al 5.0% anual.
+- **Descuento de cheques:** compara un banco contra la propuesta Zeta. Las tasas no salen del refresco de mercado; se editan en `config.js` (ver abajo).
+
+---
+
+## Descuento de cheques — editar tasas
+
+En `config.js`, bloque `ZETA_CONFIG.chequeDiscount`. Son **tasas de ejemplo** hasta conectar una fuente en vivo. El refresco de caución, LECAP y plazo fijo no las modifica.
+
+Porcentajes de tasa en puntos (`27.5` = 27,5%). `iva` en decimal (`0.21` = 21%).
+
+Defaults de esta versión:
+
+| Campo | Banco | Propuesta Zeta |
+| --- | --- | --- |
+| Nombre | Banco Macro (`bankLabel`, editable también en la simulación) | Propuesta Zeta |
+| `tnaDesc` | 27,5% | 25,5% |
+| `derechosPct` | 0,06% | 0,05% |
+| `tnaArancel` | 1,00% | 0,70% |
+| `iva` | 0,21 | 0,21 |
+
+En la pantalla el contador carga monto y plazo, y puede pisar el nombre del banco y la TNA de descuento solo para esa simulación. Derechos, arancel e IVA siguen los de `config.js`.
+
+Las fórmulas están comentadas en `cheque-discount.js`. Si eligen cheques, el lead al Sheet manda `instrument: "descuento_cheques"`, `monto`, `plazo`, `cftEfectivoBanco`, `cftEfectivoZeta`, `cftNominalBanco`, `cftNominalZeta` y `conviene` (más `resumen` en una línea). `rendimiento` en ese caso es la diferencia de plata neta de Zeta contra el banco, en pesos (puede ser negativa).
 
 ---
 
