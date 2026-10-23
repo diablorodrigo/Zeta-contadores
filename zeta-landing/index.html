@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simulador de Tesorería PyME | Plataforma Corporativa</title>
+  
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    input[type=number]::-webkit-inner-spin-button, 
+    input[type=number]::-webkit-outer-spin-button { 
+      -webkit-appearance: none; 
+      margin: 0; 
+    }
+    input[type=range]::-webkit-slider-thumb {
+      appearance: none;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #2563eb;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      border: 3px solid white;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans min-h-screen selection:bg-blue-600 selection:text-white">
+
+  <!-- ========================================== -->
+  <!-- 1. PANTALLA DE ACCESO POR PIN (GATEKEEPER) -->
+  <!-- ========================================== -->
+  <div id="gatekeeper-screen" class="min-h-screen flex items-center justify-center p-4 bg-slate-950 relative overflow-hidden">
+    <div class="absolute -top-40 -left-40 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl pointer-events-none"></div>
+    <div class="absolute -bottom-40 -right-40 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none"></div>
+
+    <div class="max-w-md w-full bg-slate-900/90 border border-slate-800 rounded-3xl p-8 shadow-2xl backdrop-blur-xl relative z-10 text-center">
+      <div class="w-16 h-16 bg-blue-500/10 border border-blue-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6 text-blue-400">
+        <i data-lucide="shield-check" class="w-8 h-8"></i>
+      </div>
+
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-300 mb-4 tracking-wide uppercase">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        Plataforma Corporativa Privada
+      </div>
+
+      <h1 class="text-2xl font-bold tracking-tight text-white mb-2">Simulador de Tesorería PyME</h1>
+      <p class="text-sm text-slate-400 mb-8 leading-relaxed">
+        Ingrese el PIN de acceso asignado a su Estudio Contable para habilitar la terminal de colocación de liquidez.
+      </p>
+
+      <div class="mb-6">
+        <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+          Código de Acceso (4 dígitos)
+        </label>
+        
+        <div class="flex justify-center gap-3 mb-2" id="pin-boxes">
+          <input type="password" maxlength="1" class="pin-box w-14 h-16 text-center text-2xl font-bold rounded-xl bg-slate-950 border-2 border-slate-700 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 text-white outline-none transition-all" data-index="0" autofocus autocomplete="off" inputmode="numeric">
+          <input type="password" maxlength="1" class="pin-box w-14 h-16 text-center text-2xl font-bold rounded-xl bg-slate-950 border-2 border-slate-700 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 text-white outline-none transition-all" data-index="1" autocomplete="off" inputmode="numeric">
+          <input type="password" maxlength="1" class="pin-box w-14 h-16 text-center text-2xl font-bold rounded-xl bg-slate-950 border-2 border-slate-700 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 text-white outline-none transition-all" data-index="2" autocomplete="off" inputmode="numeric">
+          <input type="password" maxlength="1" class="pin-box w-14 h-16 text-center text-2xl font-bold rounded-xl bg-slate-950 border-2 border-slate-700 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 text-white outline-none transition-all" data-index="3" autocomplete="off" inputmode="numeric">
+        </div>
+
+        <div id="pin-error" class="hidden text-rose-400 text-xs font-medium mt-3 flex items-center justify-center gap-1.5">
+          <i data-lucide="alert-circle" class="w-4 h-4"></i>
+          <span>PIN incorrecto o no autorizado. Intente nuevamente.</span>
+        </div>
+      </div>
+
+      <button id="btn-unlock" class="w-full bg-blue-600 hover:bg-blue-500 active:scale-[0.99] text-white font-semibold py-3.5 px-4 rounded-xl transition duration-200 shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2">
+        <span>Desbloquear Terminal</span>
+        <i data-lucide="arrow-right" class="w-4 h-4"></i>
+      </button>
+
+      <div class="mt-8 pt-6 border-t border-slate-800 text-xs text-slate-500">
+        <p class="mb-2 font-medium text-slate-400">PINs de prueba configurados:</p>
+        <div class="flex flex-wrap gap-2 justify-center">
+          <button onclick="fillPin('4829')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs transition border border-slate-700">
+            <strong>4829</strong> (Estudio Pérez - Salta)
+          </button>
+          <button onclick="fillPin('1042')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs transition border border-slate-700">
+            <strong>1042</strong> (Gómez & Cons. - Cba)
+          </button>
+        </div>
+      </div>
+
+      <div class="mt-6 flex items-center justify-center gap-1.5 text-[11px] text-slate-500">
+        <i data-lucide="lock" class="w-3 h-3"></i>
+        <span>Tecnología provista por Zeta Finance</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================================================== -->
+  <!-- 2. PLATAFORMA PRINCIPAL: SIMULADOR MULTI-ACTIVO      -->
+  <!-- ==================================================== -->
+  <div id="simulator-screen" class="hidden min-h-screen bg-slate-950 text-slate-100 flex flex-col relative">
+
+    <!-- BARRA SUPERIOR DINÁMICA -->
+    <header class="sticky top-0 z-40 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 transition-colors">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+          <div id="studio-avatar" class="w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg text-white shadow-md border border-white/10 transition-colors">
+            EP
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h2 id="studio-title" class="font-bold text-lg text-white tracking-tight">Estudio Pérez & Asociados</h2>
+              <span id="studio-badge" class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                Partner Exclusivo
+              </span>
+            </div>
+            <p id="studio-subtitle" class="text-xs text-slate-400">Terminal de Liquidez y Tesorería PyME</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <div id="zeta-partner-tag" class="hidden sm:flex items-center gap-1.5 text-xs text-slate-400 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700/60">
+            <span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+            Operado por <strong>Zeta Finance</strong>
+          </div>
+          <button onclick="lockScreen()" title="Cerrar sesión" class="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl border border-slate-700 text-xs flex items-center gap-2 transition">
+            <i data-lucide="log-out" class="w-4 h-4"></i>
+            <span class="hidden md:inline">Cerrar Sesión</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- CUERPO PRINCIPAL -->
+    <main class="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+      
+      <!-- Selector de Moneda y Encabezado -->
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div>
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 text-xs font-semibold mb-2 border border-blue-500/20">
+            <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+            Comparador Multiactivo de Liquidez
+          </div>
+          <h1 class="text-2xl sm:text-3xl font-bold text-white tracking-tight">Estrategias de Colocación Transitoria</h1>
+          <p class="text-slate-400 text-sm">Compara en tiempo real Cauciones Bursátiles, Plazos Fijos, LECAPs y Colocaciones en Dólares.</p>
+        </div>
+
+        <!-- SELECTOR DE MONEDA: PESOS vs DÓLARES -->
+        <div class="bg-slate-900 border border-slate-800 p-1.5 rounded-2xl flex items-center gap-1 self-start md:self-auto">
+          <button id="btn-currency-ars" onclick="setCurrency('ARS')" class="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 bg-blue-600 text-white shadow-md">
+            <span>🇦🇷 Pesos (ARS)</span>
+          </button>
+          <button id="btn-currency-usd" onclick="setCurrency('USD')" class="px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 text-slate-400 hover:text-white hover:bg-slate-800">
+            <span>🇺🇸 Dólares (USD 5% Fijo)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- BARRA DE ESTADO DE TASAS (ACTUALIZACIÓN CADA 30 MINUTOS) -->
+      <div class="mb-6 p-3 px-4 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div class="flex items-center gap-2.5">
+          <span id="rate-status-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span id="rate-status-text" class="font-medium text-slate-300">
+            Tasas de mercado sincronizadas
+          </span>
+          <span class="text-slate-600">&bull;</span>
+          <span id="rate-last-update" class="text-slate-400 font-mono">
+            Actualizado: hace unos momentos
+          </span>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <span class="text-[11px] text-slate-500 hidden sm:inline">
+            <i data-lucide="clock" class="w-3 h-3 inline mr-1"></i>Renovación automática cada 30 min
+          </span>
+          <button onclick="forceRefreshRates()" id="btn-refresh-rates" title="Forzar actualización ahora" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition flex items-center gap-1.5 text-xs">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5" id="refresh-icon"></i>
+            <span>Actualizar</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- GRID PRINCIPAL DE SIMULACIÓN -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+
+        <!-- ===================================== -->
+        <!-- COLUMNA IZQUIERDA: CONTROLES / PARÁMETROS -->
+        <!-- ===================================== -->
+        <div class="lg:col-span-7 space-y-6">
+          
+          <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl">
+            <h3 class="text-lg font-bold text-white mb-6 flex items-center justify-between">
+              <span class="flex items-center gap-2">
+                <i data-lucide="sliders" class="w-5 h-5 text-blue-400"></i>
+                <span>Parámetros de la Colocación</span>
+              </span>
+              <span id="currency-badge-label" class="text-xs px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 font-mono">ARS ($)</span>
+            </h3>
+
+            <!-- 1. Capital a Colocar -->
+            <div class="mb-6">
+              <div class="flex justify-between items-center mb-2">
+                <label id="label-capital-input" class="text-sm font-semibold text-slate-300">Capital a Rentabilizar</label>
+                <span id="label-capital-hint" class="text-xs text-slate-500">Mínimo sugerido: $500.000 ARS</span>
+              </div>
+
+              <div class="relative">
+                <span id="currency-symbol-display" class="absolute left-4 top-1/2 -translate-y-1/2 text-xl font-bold text-slate-400">$</span>
+                <input 
+                  id="input-capital" 
+                  type="text" 
+                  value="5.000.000" 
+                  class="w-full pl-10 pr-4 py-4 rounded-2xl bg-slate-950 border-2 border-slate-800 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 text-white font-mono text-2xl font-bold outline-none transition"
+                >
+              </div>
+
+              <!-- Botones Rápidos Dinámicos según Moneda -->
+              <div class="flex flex-wrap gap-2 mt-3" id="quick-capital-container">
+                <!-- Se llenan por JS según ARS o USD -->
+              </div>
+            </div>
+
+            <!-- 2. Plazo de Colocación (Días) -->
+            <div class="mb-6">
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-sm font-semibold text-slate-300">Horizonte de Tiempo (Días)</label>
+                <span id="display-plazo" class="text-base font-bold text-blue-400 bg-blue-500/10 px-3 py-1 rounded-lg border border-blue-500/20">7 días</span>
+              </div>
+
+              <input 
+                id="slider-plazo" 
+                type="range" 
+                min="1" 
+                max="35" 
+                value="7" 
+                class="w-full h-2.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+              >
+
+              <!-- Atajos de Plazos con los días específicos solicitados -->
+              <div class="grid grid-cols-5 gap-2 mt-3">
+                <button onclick="setPlazo(3)" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="3">
+                  <span class="block text-xs font-bold text-white">3 días</span>
+                  <span class="block text-[10px] text-slate-400">Fin sem.</span>
+                </button>
+                <button onclick="setPlazo(7)" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="7">
+                  <span class="block text-xs font-bold text-white">7 días</span>
+                  <span class="block text-[10px] text-slate-400">1 sem.</span>
+                </button>
+                <button onclick="setPlazo(10)" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="10">
+                  <span class="block text-xs font-bold text-white">10 días</span>
+                  <span class="block text-[10px] text-slate-400">Corta</span>
+                </button>
+                <button onclick="setPlazo(15)" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="15">
+                  <span class="block text-xs font-bold text-white">15 días</span>
+                  <span class="block text-[10px] text-slate-400">Quincena</span>
+                </button>
+                <button onclick="setPlazo(30)" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="30">
+                  <span class="block text-xs font-bold text-white">30 días</span>
+                  <span class="block text-[10px] text-slate-400">1 mes</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 3. Selección de Instrumento Principal -->
+            <div id="instrument-selector-box" class="space-y-3">
+              <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                Instrumento Prioritario Seleccionado:
+              </label>
+
+              <!-- Opciones en PESOS -->
+              <div id="ars-instruments" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                
+                <!-- 1. Caución -->
+                <button onclick="selectInstrument('caucion')" id="btn-inst-caucion" class="p-3.5 rounded-2xl border text-left transition relative bg-blue-500/10 border-blue-500 text-white">
+                  <div class="flex items-center justify-between mb-1">
+                    <span class="text-xs font-bold">Caución Bursátil</span>
+                    <span id="rate-badge-caucion" class="text-[11px] font-mono font-bold text-blue-400 bg-blue-950 px-1.5 py-0.5 rounded">21.5%</span>
+                  </div>
+                  <p class="text-[11px] text-slate-400">Garantía BYMA &bull; T+0</p>
+                </button>
+
+                <!-- 2. LECAP Corta -->
+                <button onclick="selectInstrument('lecap')" id="btn-inst-lecap" class="p-3.5 rounded-2xl border text-left transition relative bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700">
+                  <div class="flex items-center justify-between mb-1">
+                    <span class="text-xs font-bold flex items-center gap-1.5">
+                      <span>LECAP Corta</span>
+                      <span id="lecap-ticker-pill" class="text-[10px] font-mono font-bold text-emerald-300 bg-emerald-950/80 border border-emerald-500/30 px-1.5 py-0.2 rounded">S30N6</span>
+                    </span>
+                    <span id="rate-badge-lecap" class="text-[11px] font-mono font-bold text-emerald-400 bg-emerald-950 px-1.5 py-0.5 rounded">26.5%</span>
+                  </div>
+                  <p class="text-[11px] text-slate-400 flex items-center justify-between">
+                    <span>Vto: <strong id="lecap-vto-label" class="text-slate-300">30/Nov/26</strong></span>
+                    <span class="text-[10px] text-emerald-400/80">Mayor liquidez</span>
+                  </p>
+                </button>
+
+                <!-- 3. Plazo Fijo -->
+                <button onclick="selectInstrument('plazofijo')" id="btn-inst-plazofijo" class="p-3.5 rounded-2xl border text-left transition relative bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700">
+                  <div class="flex items-center justify-between mb-1">
+                    <span class="text-xs font-bold">Plazo Fijo</span>
+                    <span id="rate-badge-plazofijo" class="text-[11px] font-mono font-bold text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">19.5%</span>
+                  </div>
+                  <p class="text-[11px] text-slate-400">Mínimo 30 días inmovilizado</p>
+                </button>
+              </div>
+
+              <!-- Opción en DÓLARES -->
+              <div id="usd-instruments" class="hidden p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">
+                      $
+                    </div>
+                    <div>
+                      <h4 class="font-bold text-sm text-emerald-300">Renta Corporativa en USD (Tasa Fija 5% Anual)</h4>
+                      <p class="text-xs text-slate-400">Cauciones en USD y Obligaciones Negociables cortas de primera línea</p>
+                    </div>
+                  </div>
+                  <span class="px-3 py-1 bg-emerald-500/20 text-emerald-300 rounded-lg font-mono font-bold text-sm">
+                    5.0% TNA
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Ajuste manual de Tasa para el asesor -->
+            <div class="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between text-xs">
+              <span class="text-slate-400 flex items-center gap-1.5">
+                <i data-lucide="edit-3" class="w-3.5 h-3.5 text-blue-400"></i>
+                <span>TNA activa de simulación:</span>
+              </span>
+              <div class="flex items-center gap-1">
+                <input 
+                  id="input-active-tna" 
+                  type="number" 
+                  step="0.5" 
+                  value="21.5" 
+                  class="w-16 px-2 py-1 text-center font-mono font-bold bg-slate-950 border border-slate-700 rounded-lg text-emerald-400 focus:border-blue-500 outline-none"
+                >
+                <span class="font-bold text-emerald-400">% TNA</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- TABLA COMPARATIVA MULTIACTIVO EN TIEMPO REAL -->
+          <div id="multiasset-table-card" class="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
+            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center justify-between">
+              <span class="flex items-center gap-2">
+                <i data-lucide="bar-chart-3" class="w-4 h-4 text-blue-400"></i>
+                <span>Comparativa en el Plazo Elegido</span>
+              </span>
+              <span class="text-[11px] text-slate-500 lowercase">ordenado por rendimiento</span>
+            </h4>
+
+            <div class="space-y-2.5" id="comparison-rows-container">
+              <!-- Se generan por JS -->
+            </div>
+          </div>
+
+        </div>
+
+        <!-- ===================================== -->
+        <!-- COLUMNA DERECHA: RESULTADO & CONVERSIÓN -->
+        <!-- ===================================== -->
+        <div class="lg:col-span-5 space-y-6">
+          
+          <!-- Tarjeta de Ganancia Generada -->
+          <div class="bg-gradient-to-br from-blue-900/50 via-slate-900 to-slate-900 border-2 border-blue-500/40 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
+            <div class="absolute -top-12 -right-12 w-40 h-40 bg-blue-500/10 rounded-full blur-2xl"></div>
+
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-bold tracking-wider uppercase text-blue-400" id="card-hero-subtitle">
+                Rendimiento Proyectado
+              </span>
+              <span id="active-instrument-badge" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                Caución Bursátil
+              </span>
+            </div>
+
+            <!-- Cifra Principal -->
+            <div class="flex items-baseline gap-2 mb-2">
+              <span class="text-4xl sm:text-5xl font-extrabold text-emerald-400 font-mono tracking-tight" id="display-rendimiento">
+                +$35.000
+              </span>
+            </div>
+
+            <p class="text-xs text-slate-400 mb-6" id="display-lead-explanation">
+              Intereses netos que ingresan a la cuenta comitente de la PyME.
+            </p>
+
+            <!-- Desglose de Cifras -->
+            <div class="space-y-3 pt-4 border-t border-slate-800 text-sm">
+              <div class="flex justify-between items-center">
+                <span class="text-slate-400">Capital Inicial:</span>
+                <span class="font-mono font-bold text-slate-200" id="display-resumen-capital">$5.000.000</span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-slate-400">Total Recuperado:</span>
+                <span class="font-mono font-bold text-white text-base" id="display-capital-final">$5.035.000</span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-slate-400">Rendimiento por día:</span>
+                <span class="font-mono font-semibold text-emerald-400" id="display-diario">+$5.000 / día</span>
+              </div>
+            </div>
+
+            <!-- Botón Principal de Conversión -->
+            <div class="mt-8">
+              <button onclick="openLeadModal()" class="w-full py-4 px-6 rounded-2xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.99] text-slate-950 font-extrabold text-base transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2">
+                <i data-lucide="send" class="w-5 h-5"></i>
+                <span>Solicitar Asesoramiento / Apertura</span>
+              </button>
+              <p class="text-center text-[11px] text-slate-400 mt-2">
+                Apertura 100% bonificada para clientes del Estudio
+              </p>
+            </div>
+          </div>
+
+          <!-- Cuadro de Costo de Oportunidad -->
+          <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6">
+            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-400"></i>
+              El Costo de no Operar
+            </h4>
+            <p class="text-xs text-slate-300 leading-relaxed mb-4">
+              Dejar este capital en la cuenta corriente bancaria genera <strong class="text-rose-400">$0 de interés</strong>, sufriendo una desvalorización por inflación durante los mismos días.
+            </p>
+            <div class="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center justify-between text-xs">
+              <span class="text-amber-200 font-medium">Dinero que el cliente no deja sobre la mesa:</span>
+              <strong class="font-mono text-emerald-400 text-sm" id="display-opportunity-cost">+$35.000</strong>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </main>
+
+    <!-- FOOTER INSTITUCIONAL -->
+    <footer class="mt-auto border-t border-slate-900 bg-slate-950/80 py-6">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+        <div class="flex items-center gap-2">
+          <span id="footer-studio-name" class="font-semibold text-slate-400">Estudio Pérez & Asociados</span>
+          <span>&bull;</span>
+          <span>Canal de Tesorería PyME</span>
+        </div>
+        <div id="footer-zeta-signature" class="flex items-center gap-1.5">
+          <span>Infraestructura financiera por</span>
+          <strong class="text-slate-400">Zeta Finance</strong>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- ==================================================== -->
+  <!-- 3. MODAL DE CAPTURA DE PROSPECTO (LEAD MARKING)      -->
+  <!-- ==================================================== -->
+  <div id="lead-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+    <div class="max-w-lg w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative">
+      
+      <button onclick="closeLeadModal()" class="absolute top-5 right-5 text-slate-400 hover:text-white p-2 rounded-xl bg-slate-800/50 hover:bg-slate-800 transition">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <div class="mb-6">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 text-xs font-semibold mb-2 border border-blue-500/20">
+          <span class="w-2 h-2 rounded-full bg-blue-400"></span>
+          <span id="modal-studio-tag">Derivado por: Estudio Pérez</span>
+        </div>
+        <h3 class="text-xl font-bold text-white">Solicitud de Apertura de Cuenta Comitente</h3>
+        <p class="text-xs text-slate-400 mt-1">
+          Complete los datos de la PyME para canalizar la colocación con condiciones preferenciales.
+        </p>
+      </div>
+
+      <!-- Resumen en Modal -->
+      <div class="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 mb-5 grid grid-cols-3 gap-2 text-xs">
+        <div>
+          <span class="text-slate-500 block">Instrumento</span>
+          <span class="font-bold text-white truncate block" id="modal-instrumento">Caución</span>
+        </div>
+        <div>
+          <span class="text-slate-500 block">Capital y Plazo</span>
+          <span class="font-mono font-bold text-blue-400 block" id="modal-capital-plazo">$5M &bull; 7d</span>
+        </div>
+        <div>
+          <span class="text-slate-500 block">Rendimiento</span>
+          <span class="font-mono font-bold text-emerald-400 block" id="modal-ganancia">+$35.000</span>
+        </div>
+      </div>
+
+      <form id="lead-form" onsubmit="handleLeadSubmit(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">Nombre de la Empresa o Razón Social *</label>
+          <input 
+            id="lead-company" 
+            type="text" 
+            required 
+            placeholder="Ej. Distribuidora del Norte S.R.L." 
+            class="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-white text-sm outline-none transition"
+          >
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">Nombre y Apellido de Contacto *</label>
+            <input 
+              id="lead-name" 
+              type="text" 
+              required 
+              placeholder="Ej. Juan Pérez" 
+              class="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-white text-sm outline-none transition"
+            >
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">Teléfono / WhatsApp *</label>
+            <input 
+              id="lead-phone" 
+              type="tel" 
+              required 
+              placeholder="Ej. 11 5555 4444" 
+              class="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-white text-sm outline-none transition"
+            >
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">Notas adicionales (opcional)</label>
+          <input 
+            id="lead-notes" 
+            type="text" 
+            placeholder="Ej. Cuentas a liquidar la próxima semana" 
+            class="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-white text-sm outline-none transition"
+          >
+        </div>
+
+        <div class="pt-3 space-y-2">
+          <button 
+            type="button" 
+            onclick="sendToWhatsapp()" 
+            class="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] text-white font-bold text-sm transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2"
+          >
+            <i data-lucide="message-circle" class="w-4 h-4"></i>
+            <span>Enviar a Mesa de Operaciones por WhatsApp</span>
+          </button>
+
+          <button 
+            type="submit" 
+            class="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition border border-slate-700"
+          >
+            Guardar en Registro Interno
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="hidden fixed bottom-6 right-6 z-50 bg-slate-900 border border-slate-700 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 text-sm">
+    <i data-lucide="check-circle" class="w-5 h-5 text-emerald-400"></i>
+    <span id="toast-message">Prospecto registrado exitosamente</span>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="simulator.js"></script>
+</body>
+</html>
