@@ -158,7 +158,7 @@
             Comparador Multiactivo de Liquidez
           </div>
           <h1 class="text-2xl sm:text-3xl font-bold text-white tracking-tight">Estrategias de Colocación Transitoria</h1>
-          <p class="text-slate-400 text-sm">Compara cauciones, plazos fijos, LECAPs, dólares y descuento de cheques.</p>
+          <p class="text-slate-400 text-sm">Compara cauciones, plazos fijos, LECAPs, dólares, descuento de cheques y plazo fijo Macro contra letra corta.</p>
         </div>
 
         <!-- SELECTOR DE MONEDA: PESOS vs DÓLARES -->
@@ -258,22 +258,27 @@
                 <button onclick="setPlazo(3)" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="3">
                   <span class="block text-xs font-bold text-white">3 días</span>
                   <span class="block text-[10px] text-slate-400">Fin sem.</span>
+                  <span id="pill-tna-3" class="block text-[10px] font-mono text-blue-300">20.5%</span>
                 </button>
                 <button onclick="setPlazo(7)" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="7">
                   <span class="block text-xs font-bold text-white">7 días</span>
                   <span class="block text-[10px] text-slate-400">1 sem.</span>
+                  <span id="pill-tna-7" class="block text-[10px] font-mono text-blue-300">21.5%</span>
                 </button>
                 <button onclick="setPlazo(10)" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="10">
                   <span class="block text-xs font-bold text-white">10 días</span>
                   <span class="block text-[10px] text-slate-400">Corta</span>
+                  <span id="pill-tna-10" class="block text-[10px] font-mono text-blue-300">22.0%</span>
                 </button>
                 <button onclick="setPlazo(15)" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="15">
                   <span class="block text-xs font-bold text-white">15 días</span>
                   <span class="block text-[10px] text-slate-400">Quincena</span>
+                  <span id="pill-tna-15" class="block text-[10px] font-mono text-blue-300">22.5%</span>
                 </button>
                 <button onclick="setPlazo(30)" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="30">
                   <span class="block text-xs font-bold text-white">30 días</span>
                   <span class="block text-[10px] text-slate-400">1 mes</span>
+                  <span id="pill-tna-30" class="block text-[10px] font-mono text-blue-300">23.5%</span>
                 </button>
               </div>
               </div>
@@ -297,6 +302,39 @@
                   <span class="block text-xs font-bold text-white">180d</span>
                 </button>
               </div>
+              </div>
+              <div id="plazo-pills-macro" class="hidden">
+              <div class="grid grid-cols-5 gap-2 mt-3">
+                <button type="button" onclick="setPlazo(30)" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="30">
+                  <span class="block text-xs font-bold text-white">30d</span>
+                  <span class="block text-[10px] text-slate-400">Mín. PF</span>
+                </button>
+                <button type="button" onclick="setPlazo(Number(this.getAttribute('data-days')))" id="macro-pill-vto" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="38">
+                  <span data-vto-label class="block text-xs font-bold text-white">38d</span>
+                  <span data-vto-sub class="block text-[10px] text-slate-400">Vto. letra</span>
+                </button>
+                <button type="button" onclick="setPlazo(60)" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="60">
+                  <span class="block text-xs font-bold text-white">60d</span>
+                </button>
+                <button type="button" onclick="setPlazo(90)" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="90">
+                  <span class="block text-xs font-bold text-white">90d</span>
+                </button>
+                <button type="button" onclick="setPlazo(180)" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="180">
+                  <span class="block text-xs font-bold text-white">180d</span>
+                </button>
+              </div>
+              </div>
+              <div id="macro-plazo-direct" class="hidden mt-3">
+                <label for="input-plazo-macro" class="block text-xs font-semibold text-slate-400 mb-1.5">Días al vencimiento</label>
+                <input
+                  id="input-plazo-macro"
+                  type="number"
+                  min="1"
+                  max="365"
+                  step="1"
+                  inputmode="numeric"
+                  class="w-full sm:w-32 px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm outline-none focus:border-sky-500"
+                >
               </div>
               <div id="cheque-plazo-direct" class="hidden mt-3">
                 <label for="input-plazo-cheque" class="block text-xs font-semibold text-slate-400 mb-1.5">Días exactos</label>
@@ -360,6 +398,14 @@
                     <span class="mt-1 inline-block text-[10px] font-mono font-bold text-violet-300 bg-violet-950 px-1.5 py-0.5 rounded">Banco vs Zeta</span>
                   </div>
                   <p class="text-[11px] text-slate-400">CFT efectivo con detalle impositivo</p>
+                </button>
+
+                <button onclick="selectInstrument('macroLetra')" id="btn-inst-macro-letra" class="sm:col-span-2 p-3.5 rounded-2xl border text-left transition relative bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700 min-w-0">
+                  <div class="flex items-center justify-between gap-2 mb-1">
+                    <span class="text-xs font-bold leading-snug">Plazo fijo Macro vs letra corta</span>
+                    <span id="macro-letra-badge" class="shrink-0 text-[11px] font-mono font-bold text-sky-300 bg-sky-950 px-1.5 py-0.5 rounded">26.5%</span>
+                  </div>
+                  <p class="text-[11px] text-slate-400">Qué deja más plata, después de la comisión de la letra</p>
                 </button>
               </div>
 
@@ -451,6 +497,97 @@
                 </div>
               </div>
             </div>
+
+            <div id="macro-rate-overrides" class="hidden mt-4 pt-4 border-t border-slate-800 space-y-3">
+              <p class="text-xs text-slate-400 leading-relaxed">
+                Nada de esto se guarda. La TNA de Macro sale del tramo de
+                <span class="font-mono text-slate-300">config.js</span>
+                (o de la última sincronización) y la de la letra, de la TNA bruta vigente.
+                La membresía del broker no se descuenta.
+              </p>
+              <div>
+                <label for="macro-bank-label" class="block text-xs font-semibold text-slate-300 mb-1.5">Banco del plazo fijo</label>
+                <input
+                  id="macro-bank-label"
+                  type="text"
+                  maxlength="40"
+                  autocomplete="off"
+                  class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-sm outline-none focus:border-sky-500"
+                >
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label for="macro-tna-bank" class="block text-xs font-semibold text-slate-300 mb-1.5">TNA plazo fijo</label>
+                  <div class="flex items-center gap-1">
+                    <input
+                      id="macro-tna-bank"
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      inputmode="decimal"
+                      class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm outline-none focus:border-sky-500"
+                    >
+                    <span class="text-xs font-bold text-slate-400">%</span>
+                  </div>
+                  <p id="macro-band-hint" class="text-[10px] text-slate-500 mt-1.5"></p>
+                  <button type="button" id="macro-reset-tna" class="mt-1 text-[10px] font-semibold text-sky-400 hover:text-sky-300">Usar la tasa del tramo</button>
+                </div>
+                <div>
+                  <label for="macro-tna-letra" class="block text-xs font-semibold text-slate-300 mb-1.5">TNA bruta de la letra</label>
+                  <div class="flex items-center gap-1">
+                    <input
+                      id="macro-tna-letra"
+                      type="number"
+                      step="0.1"
+                      inputmode="decimal"
+                      class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm outline-none focus:border-sky-500"
+                    >
+                    <span class="text-xs font-bold text-slate-400">%</span>
+                  </div>
+                  <p id="macro-letra-hint" class="text-[10px] text-slate-500 mt-1.5"></p>
+                  <button type="button" id="macro-reset-letra" class="mt-1 text-[10px] font-semibold text-sky-400 hover:text-sky-300">Usar la TNA de mercado</button>
+                </div>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label for="macro-comision" class="block text-xs font-semibold text-slate-300 mb-1.5">Comisión de compra</label>
+                  <div class="flex items-center gap-1">
+                    <input
+                      id="macro-comision"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputmode="decimal"
+                      class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm outline-none focus:border-sky-500"
+                    >
+                    <span class="text-xs font-bold text-slate-400">%</span>
+                  </div>
+                </div>
+                <div>
+                  <label for="macro-derechos" class="block text-xs font-semibold text-slate-300 mb-1.5">Derechos de mercado</label>
+                  <div class="flex items-center gap-1">
+                    <input
+                      id="macro-derechos"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputmode="decimal"
+                      class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm outline-none focus:border-sky-500"
+                    >
+                    <span class="text-xs font-bold text-slate-400">%</span>
+                  </div>
+                </div>
+                <div class="flex items-end">
+                  <label class="flex items-start gap-2 text-xs text-slate-300 leading-snug pb-2.5">
+                    <input id="macro-aplica-iva" type="checkbox" class="mt-0.5 accent-sky-500">
+                    <span>Sumar IVA <span id="macro-iva-label">21%</span> sobre la comisión</span>
+                  </label>
+                </div>
+              </div>
+              <p class="text-[10px] text-slate-500 leading-relaxed">
+                La comisión es un cargo único sobre el monto, como en la compra de la letra. El tope publicado de Balanz para letras en pesos es 0,10%. El IVA arranca apagado.
+              </p>
+            </div>
           </div>
 
           <!-- TABLA COMPARATIVA MULTIACTIVO EN TIEMPO REAL -->
@@ -475,6 +612,18 @@
             </h4>
             <p class="text-[11px] text-slate-500 mb-4">Tasas de ejemplo. No se actualizan con el mercado.</p>
             <div id="cheque-comparison-grid" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+            <p class="mt-4 text-[11px] text-slate-500 leading-relaxed">
+              Simulación orientativa, no es consejo de inversión. Zeta Finance CNV 2103.
+            </p>
+          </div>
+
+          <div id="macro-comparison-card" class="hidden bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-xl">
+            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-2">
+              <i data-lucide="scale" class="w-4 h-4 text-sky-400"></i>
+              <span>Plazo fijo vs letra corta</span>
+            </h4>
+            <p id="macro-comparison-note" class="text-[11px] text-slate-500 mb-4">Mismo capital y mismos días para los dos lados.</p>
+            <div id="macro-comparison-grid" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
             <p class="mt-4 text-[11px] text-slate-500 leading-relaxed">
               Simulación orientativa, no es consejo de inversión. Zeta Finance CNV 2103.
             </p>
@@ -517,6 +666,44 @@
                 <button onclick="openLeadModal()" class="w-full py-4 px-6 rounded-2xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.99] text-slate-950 font-extrabold text-base transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2">
                   <i data-lucide="send" class="w-5 h-5"></i>
                   <span>Armar propuesta de descuento</span>
+                </button>
+                <p class="text-center text-[11px] text-slate-400 mt-2">
+                  Simulación orientativa, no es consejo de inversión. Zeta Finance CNV 2103.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div id="macro-result-stack" class="hidden">
+            <div class="bg-gradient-to-br from-sky-950/80 via-slate-900 to-slate-900 border-2 border-sky-500/40 rounded-3xl p-6 sm:p-8 shadow-2xl">
+              <div class="flex items-center justify-between gap-2 mb-2">
+                <span id="macro-hero-kicker" class="text-xs font-bold tracking-wider uppercase text-sky-300">Diferencia a cobrar</span>
+                <span id="macro-winner-badge" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Conviene</span>
+              </div>
+              <div id="macro-hero-delta" class="text-4xl sm:text-5xl font-extrabold text-emerald-400 font-mono tracking-tight">—</div>
+              <p id="macro-hero-subtitle" class="text-xs text-slate-400 mt-2 mb-6">Para este capital y estos días.</p>
+              <div class="space-y-3 pt-4 border-t border-slate-800 text-sm">
+                <div class="flex justify-between gap-3">
+                  <span class="text-slate-400">Capital</span>
+                  <span id="macro-hero-capital" class="font-mono font-bold text-slate-200 text-right">—</span>
+                </div>
+                <div class="flex justify-between gap-3">
+                  <span id="macro-hero-letra-label" class="text-slate-400">Recibe con la letra</span>
+                  <span id="macro-hero-letra" class="font-mono font-bold text-emerald-400 text-right">—</span>
+                </div>
+                <div class="flex justify-between gap-3">
+                  <span id="macro-hero-bank-label" class="text-slate-400 min-w-0">Recibe con el banco</span>
+                  <span id="macro-hero-bank" class="font-mono font-bold text-slate-200 text-right shrink-0">—</span>
+                </div>
+                <div class="flex justify-between gap-3">
+                  <span class="text-slate-400">TNA neta de la letra</span>
+                  <span id="macro-hero-tna-neta" class="font-mono font-bold text-sky-300 text-right">—</span>
+                </div>
+              </div>
+              <div class="mt-8">
+                <button onclick="openLeadModal()" class="w-full py-4 px-6 rounded-2xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.99] text-slate-950 font-extrabold text-base transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2">
+                  <i data-lucide="send" class="w-5 h-5"></i>
+                  <span>Armar propuesta de colocación</span>
                 </button>
                 <p class="text-center text-[11px] text-slate-400 mt-2">
                   Simulación orientativa, no es consejo de inversión. Zeta Finance CNV 2103.
@@ -728,6 +915,8 @@
 
   <script src="config.js"></script>
   <script src="cheque-discount.js"></script>
+  <script src="caucion-buckets.js"></script>
+  <script src="macro-vs-letra.js"></script>
   <script src="simulator.js"></script>
 </body>
 </html>

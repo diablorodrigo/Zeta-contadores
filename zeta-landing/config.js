@@ -11,17 +11,23 @@ const ZETA_CONFIG = {
     refreshIntervalMinutes: 30, // Se actualiza automáticamente cada 30 minutos
     apiEndpoint: "/api/rates",   // Endpoint serverless de Vercel
     directCaucionesUrl: "https://api.argentinadatos.com/v1/finanzas/cauciones/ars",
-    directPlazoFijoUrl: "https://api.argentinadatos.com/v1/finanzas/tasas/depositos30Dias"
+    bymaCaucionesUrl: "https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/cauciones",
+    directPlazoFijoUrl: "https://api.argentinadatos.com/v1/finanzas/tasas/depositos30Dias",
+    directMacroPlazoFijoUrl: "https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo"
   },
 
-  // TASAS DE RESPALDO ACTUALIZADAS AL MERCADO REAL
+  // TASAS DE RESPALDO. La caución en vivo sale de BYMA (ver api/rates.js).
+  // Si BYMA no responde, estos cinco plazos siguen siendo editables a mano
+  // y el instrumento Caución usa el del horizonte elegido (3/7/10/15/30).
+  // ArgentinaDatos /cauciones/ars suele devolver [] (snapshot IOL vacío): no
+  // es la fuente primaria.
   marketRates: {
     caucionByDays: {
-      3: 20.5,   // Fin de semana (3 días) - ~20.5% TNA
-      7: 21.5,   // 7 días - ~21.5% TNA
-      10: 22.0,  // 10 días - ~22.0% TNA
-      15: 22.5,  // 15 días - ~22.5% TNA
-      30: 23.5   // 30 días - ~23.5% TNA
+      3: 20.5,   // Fin de semana (3 días) - respaldo editable
+      7: 21.5,   // 7 días
+      10: 22.0,  // 10 días
+      15: 22.5,  // 15 días
+      30: 23.5   // 30 días
     },
     defaultCaucionTNA: 21.5,
     plazoFijoTNA: 19.5, // Promedio grandes bancos a 30 días (~19.5% TNA)
@@ -53,6 +59,47 @@ const ZETA_CONFIG = {
       tnaArancel: 0.7
     },
     iva: 0.21
+  },
+
+  // Plazo fijo Banco Macro vs letra corta. Las fórmulas están en macro-vs-letra.js.
+  // Los tramos son un ejemplo editable (ArgentinaDatos, BANCO MACRO, oct 2026,
+  // banda chica ~19,5% a 30 días hasta $5 M). Si /api/rates trae macroPlazoFijoBands,
+  // esas filas pisan estos presets hasta que el contador edite la TNA en la reunión.
+  // La TNA bruta de la letra sale de marketRates.lecapTNA (config o /api/rates).
+  //
+  // Comisión: tope publicado de Balanz para compra/venta de letras en pesos
+  // ("hasta 0,10%"), one-shot sobre el nocional. No es la comisión pactada.
+  // aplicaIva queda en false: ComparaTasas solo suma IVA si el tarifario marca
+  // ivaAdicional, y en letras públicas suele no corresponder. derechosPct en 0
+  // porque esa fila no publica derecho de mercado. La membresía mensual no se prorratea.
+  macroVsLetra: {
+    bankLabel: "Banco Macro",
+    minDias: 30,
+    bands: [
+      { montoMin: 1, montoMax: 4999999.99, plazoMin: 30, plazoMax: 35, tna: 19.5 },
+      { montoMin: 5000000, montoMax: null, plazoMin: 30, plazoMax: 35, tna: 20 },
+      { montoMin: 1, montoMax: 4999999.99, plazoMin: 36, plazoMax: 44, tna: 19.5 },
+      { montoMin: 5000000, montoMax: null, plazoMin: 36, plazoMax: 44, tna: 20 },
+      { montoMin: 1, montoMax: 4999999.99, plazoMin: 45, plazoMax: 59, tna: 19.5 },
+      { montoMin: 5000000, montoMax: null, plazoMin: 45, plazoMax: 59, tna: 20 },
+      { montoMin: 1, montoMax: 4999999.99, plazoMin: 60, plazoMax: 89, tna: 20 },
+      { montoMin: 5000000, montoMax: null, plazoMin: 60, plazoMax: 89, tna: 20.5 },
+      { montoMin: 1, montoMax: 4999999.99, plazoMin: 90, plazoMax: 119, tna: 20 },
+      { montoMin: 5000000, montoMax: null, plazoMin: 90, plazoMax: 119, tna: 20.5 },
+      { montoMin: 1, montoMax: 4999999.99, plazoMin: 120, plazoMax: 179, tna: 21 },
+      { montoMin: 5000000, montoMax: null, plazoMin: 120, plazoMax: 179, tna: 21.5 },
+      { montoMin: 1, montoMax: 4999999.99, plazoMin: 180, plazoMax: 270, tna: 21 },
+      { montoMin: 5000000, montoMax: null, plazoMin: 180, plazoMax: 270, tna: 21.5 },
+      { montoMin: 1, montoMax: 4999999.99, plazoMin: 271, plazoMax: 365, tna: 21.5 },
+      { montoMin: 5000000, montoMax: null, plazoMin: 271, plazoMax: 365, tna: 22 }
+    ],
+    letra: {
+      brokerLabel: "Balanz",
+      comisionPct: 0.10,
+      aplicaIva: false,
+      iva: 0.21,
+      derechosPct: 0
+    }
   },
 
   // Listado de Estudios Aliados y sus PINs
