@@ -15,6 +15,10 @@ document.addEventListener('DOMContentLoaded', () => {
     lucide.createIcons();
   }
 
+  // Cargar estudios dinámicos desde Google Sheets (con caché local)
+  loadStudiosFromCache();
+  fetchStudiosFromGoogleSheets();
+
   setupPinBoxes();
   setupEventListeners();
   renderQuickCapitalButtons();
@@ -25,6 +29,48 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchLiveRates();
   startRatesAutoRefresh();
 });
+
+/* ==========================================================
+   0. GESTIÓN DINÁMICA DE ESTUDIOS DESDE GOOGLE SHEETS
+========================================================== */
+
+function loadStudiosFromCache() {
+  try {
+    const cached = localStorage.getItem('zeta_studios_cache');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed && typeof parsed === 'object') {
+        ZETA_CONFIG.studios = { ...ZETA_CONFIG.studios, ...parsed };
+      }
+    }
+  } catch (e) {
+    console.warn('[Zeta Finance] Error leyendo caché de estudios:', e);
+  }
+}
+
+async function fetchStudiosFromGoogleSheets() {
+  if (!ZETA_CONFIG.googleSheetWebhookUrl) return;
+
+  try {
+    const url = `${ZETA_CONFIG.googleSheetWebhookUrl}?action=getStudios&t=${Date.now()}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
+
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && json.studios && Object.keys(json.studios).length > 0) {
+        // Combinar estudios de Google Sheets con los de respaldo
+        ZETA_CONFIG.studios = { ...ZETA_CONFIG.studios, ...json.studios };
+        localStorage.setItem('zeta_studios_cache', JSON.stringify(json.studios));
+        console.log(`[Zeta Finance] ${Object.keys(json.studios).length} estudios sincronizados desde Google Sheets.`);
+        
+        // Re-verificar URL si vino con parámetro ?pin= o ?estudio=
+        checkUrlParams();
+      }
+    }
+  } catch (err) {
+    console.info('[Zeta Finance] Usando estudios de config.js / caché local (offline o timeout).');
+  }
+}
 
 /* ==========================================================
    0. SINCRONIZACIÓN DE TASAS EN TIEMPO REAL (CADA 30 MIN)
@@ -272,19 +318,41 @@ function fillPin(pin) {
   if (boxes[3]) boxes[3].focus();
 }
 
-function validatePin(pin) {
+async function validatePin(pin) {
   const errorEl = document.getElementById('pin-error');
   
+  // 1. Verificar si ya está en memoria / caché
   if (ZETA_CONFIG.studios && ZETA_CONFIG.studios[pin]) {
     errorEl.classList.add('hidden');
     const studio = ZETA_CONFIG.studios[pin];
     unlockSimulator(studio, pin);
-  } else {
-    errorEl.classList.remove('hidden');
-    const pinBoxes = document.getElementById('pin-boxes');
-    pinBoxes.classList.add('animate-bounce');
-    setTimeout(() => pinBoxes.classList.remove('animate-bounce'), 500);
+    return;
   }
+
+  // 2. Si no está, consultar rápidamente a Google Sheets por si es un PIN recién creado
+  if (ZETA_CONFIG.googleSheetWebhookUrl) {
+    try {
+      const res = await fetch(`${ZETA_CONFIG.googleSheetWebhookUrl}?action=getStudios&t=${Date.now()}`, {
+        signal: AbortSignal.timeout(3000)
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.studios && json.studios[pin]) {
+          ZETA_CONFIG.studios = { ...ZETA_CONFIG.studios, ...json.studios };
+          localStorage.setItem('zeta_studios_cache', JSON.stringify(json.studios));
+          errorEl.classList.add('hidden');
+          unlockSimulator(json.studios[pin], pin);
+          return;
+        }
+      }
+    } catch (e) {}
+  }
+
+  // 3. Si no existe, mostrar error
+  errorEl.classList.remove('hidden');
+  const pinBoxes = document.getElementById('pin-boxes');
+  pinBoxes.classList.add('animate-bounce');
+  setTimeout(() => pinBoxes.classList.remove('animate-bounce'), 500);
 }
 
 function checkUrlParams() {
