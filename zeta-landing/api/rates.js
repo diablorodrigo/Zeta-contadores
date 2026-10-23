@@ -1,22 +1,42 @@
 /**
  * VERCEL SERVERLESS FUNCTION: /api/rates
- * 
- * Extrae y consolida en tiempo real:
- * 1. Cauciones Bursátiles en Pesos (3d, 7d, 10d, 15d, 30d) vía ArgentinaDatos / BYMA.
- * 2. Tasa de Plazo Fijo bancario (BCRA).
- * 3. Tasa / TIR de la LECAP corta de mayor liquidez vía Rava / OpenBYMA.
- * 4. Tasa corporativa en Dólares (5% fija).
- * 
- * Cache: Configurado a 30 minutos (1800 segundos) para optimizar rendimiento y cuotas.
+ *
+ * Extrae y consolida:
+ * 1. Cauciones ARS por plazo (3, 7, 10, 15, 30). Fuente primaria: BYMA
+ *    open.bymadata (POST .../free/cauciones). ArgentinaDatos
+ *    /v1/finanzas/cauciones/ars queda como respaldo: es un snapshot de la
+ *    rueda IOL y devuelve [] cuando no hay títulos, incluso con el mercado abierto.
+ * 2. Tasa de plazo fijo promedio (BCRA, depositos30Dias).
+ * 3. Tramos de plazo fijo de BANCO MACRO (ArgentinaDatos /tasas/plazoFijo),
+ *    para la comparación contra la letra corta. Si no viene la entidad, el
+ *    cliente sigue con los presets de config.js.
+ * 4. Tasa / TIR de la LECAP corta vía Rava / OpenBYMA (sin ampliar el scrapeo).
+ * 5. Tasa corporativa en dólares (5% fija).
+ *
+ * Los baldes de caución sin fila viva no se inventan: quedan en el fallback.
+ * Cache: 30 minutos (1800 segundos).
  */
 
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const {
+  bucketCaucionQuotes,
+  quotesFromBymaRows,
+  quotesFromArgentinaDatosRows
+} = require('../caucion-buckets.js');
+const { macroBandsFromArgentinaDatos } = require('../macro-vs-letra.js');
+
+const BYMA_CAUCIONES_URL = 'https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/cauciones';
+const ARGENTINA_DATOS_CAUCIONES_URL = 'https://api.argentinadatos.com/v1/finanzas/cauciones/ars';
+const DEPOSITOS_30_URL = 'https://api.argentinadatos.com/v1/finanzas/tasas/depositos30Dias';
+const PLAZO_FIJO_ENTIDADES_URL = 'https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo';
+
 export default async function handler(req, res) {
-  // Encabezados CORS y Cache de 30 minutos (1800s)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET');
   res.setHeader('Cache-Control', 's-maxage=1800, stale-while-revalidate=60');
 
-  // Valores de respaldo (Fallback) basados en el régimen de tasas actual
   const fallbackRates = {
     caucionByDays: {
       3: 20.5,
@@ -36,104 +56,64 @@ export default async function handler(req, res) {
   };
 
   try {
-    let liveRates = { ...fallbackRates };
-    let sourcesChecked = [];
+    const liveRates = { ...fallbackRates, caucionByDays: { ...fallbackRates.caucionByDays } };
+    const sourcesChecked = [];
 
-    // ==========================================
-    // 1. EXTRAER CAUCIONES (ArgentinaDatos / BYMA)
-    // ==========================================
-    try {
-      const caucionRes = await fetch('https://api.argentinadatos.com/v1/finanzas/cauciones/ars', {
-        headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(3500)
-      });
+    const [bymaRows, argentinaRows, depositos, entidades, lecapHtml] = await Promise.all([
+      fetchBymaCaucionesArs(),
+      fetchJson(ARGENTINA_DATOS_CAUCIONES_URL, 3500),
+      fetchJson(DEPOSITOS_30_URL, 3500),
+      fetchJson(PLAZO_FIJO_ENTIDADES_URL, 3500),
+      fetchText('https://clasico.rava.com/lib/let/let.php', 2500)
+    ]);
 
-      if (caucionRes.ok) {
-        const caucionesData = await caucionRes.json();
-        // caucionesData suele contener cotizaciones por plazo (dias) y tna
-        if (Array.isArray(caucionesData) && caucionesData.length > 0) {
-          const mapDays = { 3: 35.0, 7: 36.5, 10: 37.0, 15: 37.5, 30: 38.0 };
-          
-          caucionesData.forEach(item => {
-            const dias = parseInt(item.plazo || item.dias, 10);
-            const tna = parseFloat(item.tna || item.tasaPromedio || item.ultimo);
-            if (!isNaN(dias) && !isNaN(tna) && tna > 10 && tna < 120) {
-              if (dias >= 1 && dias <= 3) mapDays[3] = tna;
-              else if (dias >= 4 && dias <= 7) mapDays[7] = tna;
-              else if (dias >= 8 && dias <= 10) mapDays[10] = tna;
-              else if (dias >= 11 && dias <= 15) mapDays[15] = tna;
-              else if (dias >= 16 && dias <= 32) mapDays[30] = tna;
-            }
-          });
-
-          liveRates.caucionByDays = mapDays;
-          sourcesChecked.push('cauciones_live');
-        }
+    const bymaQuotes = quotesFromBymaRows(bymaRows);
+    const bymaCurve = bucketCaucionQuotes(bymaQuotes, fallbackRates.caucionByDays);
+    if (bymaCurve.filledBuckets > 0) {
+      liveRates.caucionByDays = bymaCurve.caucionByDays;
+      sourcesChecked.push('cauciones_byma');
+    } else if (Array.isArray(argentinaRows) && argentinaRows.length > 0) {
+      const adCurve = bucketCaucionQuotes(
+        quotesFromArgentinaDatosRows(argentinaRows),
+        fallbackRates.caucionByDays
+      );
+      if (adCurve.filledBuckets > 0) {
+        liveRates.caucionByDays = adCurve.caucionByDays;
+        sourcesChecked.push('cauciones_argentinadatos');
       }
-    } catch (e) {
-      console.warn('[rates-api] Fallback en cauciones:', e.message);
     }
 
-    // ==========================================
-    // 2. EXTRAER PLAZO FIJO (Estadísticas BCRA)
-    // ==========================================
-    try {
-      const pfRes = await fetch('https://api.argentinadatos.com/v1/finanzas/tasas/depositos30Dias', {
-        headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(3500)
-      });
-
-      if (pfRes.ok) {
-        const pfData = await pfRes.json();
-        if (Array.isArray(pfData) && pfData.length > 0) {
-          const latest = pfData[pfData.length - 1];
-          const tnaPf = parseFloat(latest.valor || latest.tna);
-          if (!isNaN(tnaPf) && tnaPf > 15 && tnaPf < 90) {
-            liveRates.plazoFijoTNA = parseFloat(tnaPf.toFixed(1));
-            sourcesChecked.push('plazofijo_live');
-          }
-        }
+    if (Array.isArray(depositos) && depositos.length > 0) {
+      const latest = depositos[depositos.length - 1];
+      const tnaPf = parseFloat(latest.valor || latest.tna);
+      if (!isNaN(tnaPf) && tnaPf > 15 && tnaPf < 90) {
+        liveRates.plazoFijoTNA = parseFloat(tnaPf.toFixed(1));
+        sourcesChecked.push('plazofijo_live');
       }
-    } catch (e) {
-      console.warn('[rates-api] Fallback en plazo fijo:', e.message);
     }
 
-    // ==========================================
-    // 3. EXTRAER LECAP CORTA (TIR de mercado secundario)
-    // ==========================================
-    try {
-      // Consultamos panel de letras en Rava / OpenBYMA
-      const lecapRes = await fetch('https://clasico.rava.com/lib/let/let.php', {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        },
-        signal: AbortSignal.timeout(4000)
-      });
-
-      if (lecapRes.ok) {
-        const html = await lecapRes.text();
-        // Regex para capturar tanto el TICKER de la letra (ej. S28F5) como su TIR
-        const tirMatches = [...html.matchAll(/(S\d{2}[A-Z]\d{1,2})[^<]*?(\d{2,3}[.,]\d{1,2})%/gi)];
-        
-        if (tirMatches && tirMatches.length > 0) {
-          const detectedTicker = tirMatches[0][1].toUpperCase();
-          const rawTir = tirMatches[0][2].replace(',', '.');
-          const parsedTir = parseFloat(rawTir);
-          if (!isNaN(parsedTir) && parsedTir > 15 && parsedTir < 90) {
-            liveRates.lecapTNA = parseFloat(parsedTir.toFixed(1));
-            liveRates.lecapDetails = {
-              ticker: detectedTicker,
-              nombre: `LECAP ${detectedTicker}`
-            };
-            sourcesChecked.push('lecap_rava_live');
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('[rates-api] Fallback en lecap:', e.message);
+    const macroBands = macroBandsFromArgentinaDatos(entidades);
+    if (macroBands) {
+      liveRates.macroPlazoFijoBands = macroBands;
+      sourcesChecked.push('macro_plazofijo_live');
     }
 
-    // Respuesta final consolidada
+    if (lecapHtml) {
+      const tirMatches = [...lecapHtml.matchAll(/(S\d{2}[A-Z]\d{1,2})[^<]*?(\d{2,3}[.,]\d{1,2})%/gi)];
+      if (tirMatches.length > 0) {
+        const detectedTicker = tirMatches[0][1].toUpperCase();
+        const parsedTir = parseFloat(tirMatches[0][2].replace(',', '.'));
+        if (!isNaN(parsedTir) && parsedTir > 15 && parsedTir < 90) {
+          liveRates.lecapTNA = parseFloat(parsedTir.toFixed(1));
+          liveRates.lecapDetails = {
+            ticker: detectedTicker,
+            nombre: `LECAP ${detectedTicker}`
+          };
+          sourcesChecked.push('lecap_rava_live');
+        }
+      }
+    }
+
     return res.status(200).json({
       success: true,
       timestamp: new Date().toISOString(),
@@ -141,9 +121,7 @@ export default async function handler(req, res) {
       sourcesChecked,
       rates: liveRates
     });
-
   } catch (error) {
-    // Si ocurre un error general, devolver el fallback con status 200 para no romper la web
     return res.status(200).json({
       success: false,
       timestamp: new Date().toISOString(),
@@ -151,5 +129,58 @@ export default async function handler(req, res) {
       error: error.message,
       rates: fallbackRates
     });
+  }
+}
+
+async function fetchBymaCaucionesArs() {
+  try {
+    const res = await fetch(BYMA_CAUCIONES_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Origin': 'https://open.bymadata.com.ar',
+        'Referer': 'https://open.bymadata.com.ar/',
+        'User-Agent': 'Mozilla/5.0'
+      },
+      body: '{}',
+      signal: AbortSignal.timeout(5000)
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return Array.isArray(data) ? data : null;
+  } catch (error) {
+    console.warn('[rates-api] BYMA cauciones no disponible:', error.message);
+    return null;
+  }
+}
+
+async function fetchJson(url, timeoutMs) {
+  try {
+    const res = await fetch(url, {
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (error) {
+    console.warn('[rates-api] Sin datos de', url, error.message);
+    return null;
+  }
+}
+
+async function fetchText(url, timeoutMs) {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+    if (!res.ok) return null;
+    return await res.text();
+  } catch (error) {
+    console.warn('[rates-api] Fallback en lecap:', error.message);
+    return null;
   }
 }

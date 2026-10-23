@@ -4,11 +4,15 @@
 
 let activeStudio = null;
 let currentCurrency = 'ARS'; // 'ARS' o 'USD'
-let selectedInstrument = 'caucion'; // 'caucion', 'lecap', 'plazofijo', 'usd', 'cheques'
+let selectedInstrument = 'caucion'; // 'caucion', 'lecap', 'plazofijo', 'usd', 'cheques', 'macroLetra'
 let currentCapital = 5000000;
 let currentPlazo = 7;
 let liquidityPlazo = 7;
 let chequePlazoDays = 90;
+let macroLetraPlazoDays = 38;
+let macroTnaDirty = false;
+let letraTnaDirty = false;
+let liveMacroBands = null;
 let activeTNA = 21.5;
 
 // Inicialización al cargar la página
@@ -22,8 +26,10 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchStudiosFromGoogleSheets();
 
   setupPinBoxes();
+  macroLetraPlazoDays = letraDaysFromConfig();
   setupEventListeners();
   initChequeControls();
+  initMacroLetraControls();
   renderQuickCapitalButtons();
   updateInstrumentRates();
   checkUrlParams();
@@ -123,7 +129,7 @@ async function fetchLiveRates(force = false) {
   try {
     const res = await fetch(ZETA_CONFIG.ratesConfig?.apiEndpoint || '/api/rates', {
       headers: { 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(4000)
+      signal: AbortSignal.timeout(8000)
     });
 
     if (res.ok) {
@@ -153,27 +159,45 @@ async function fetchLiveRates(force = false) {
 async function fetchDirectArgentinaDatos() {
   try {
     let updated = false;
+    const fallbackCurve = { ...(ZETA_CONFIG.marketRates.caucionByDays || {}) };
 
-    // Cauciones ARS
-    const cRes = await fetch(ZETA_CONFIG.ratesConfig?.directCaucionesUrl || 'https://api.argentinadatos.com/v1/finanzas/cauciones/ars', {
-      signal: AbortSignal.timeout(3500)
-    });
-    if (cRes.ok) {
-      const data = await cRes.json();
-      if (Array.isArray(data) && data.length > 0) {
-        data.forEach(item => {
-          const d = parseInt(item.plazo || item.dias, 10);
-          const t = parseFloat(item.tna || item.ultimo);
-          if (!isNaN(d) && !isNaN(t) && t > 10 && t < 120) {
-            if (d <= 3) ZETA_CONFIG.marketRates.caucionByDays[3] = t;
-            else if (d <= 7) ZETA_CONFIG.marketRates.caucionByDays[7] = t;
-            else if (d <= 10) ZETA_CONFIG.marketRates.caucionByDays[10] = t;
-            else if (d <= 15) ZETA_CONFIG.marketRates.caucionByDays[15] = t;
-            else if (d <= 32) ZETA_CONFIG.marketRates.caucionByDays[30] = t;
-          }
-        });
-        updated = true;
+    // Caución: BYMA primero. ArgentinaDatos suele devolver [] aunque el mercado esté abierto.
+    let caucionCurve = null;
+    try {
+      const bymaRes = await fetch(ZETA_CONFIG.ratesConfig?.bymaCaucionesUrl || 'https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/cauciones', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Origin': 'https://open.bymadata.com.ar',
+          'Referer': 'https://open.bymadata.com.ar/'
+        },
+        body: '{}',
+        signal: AbortSignal.timeout(5000)
+      });
+      if (bymaRes.ok && typeof quotesFromBymaRows === 'function' && typeof bucketCaucionQuotes === 'function') {
+        const bymaRows = await bymaRes.json();
+        const curve = bucketCaucionQuotes(quotesFromBymaRows(bymaRows), fallbackCurve);
+        if (curve.filledBuckets > 0) caucionCurve = curve.caucionByDays;
       }
+    } catch (bymaError) {
+      console.info('[Zeta Finance] BYMA directo no disponible:', bymaError.message);
+    }
+
+    if (!caucionCurve) {
+      const cRes = await fetch(ZETA_CONFIG.ratesConfig?.directCaucionesUrl || 'https://api.argentinadatos.com/v1/finanzas/cauciones/ars', {
+        signal: AbortSignal.timeout(3500)
+      });
+      if (cRes.ok && typeof quotesFromArgentinaDatosRows === 'function' && typeof bucketCaucionQuotes === 'function') {
+        const data = await cRes.json();
+        const curve = bucketCaucionQuotes(quotesFromArgentinaDatosRows(data), fallbackCurve);
+        if (curve.filledBuckets > 0) caucionCurve = curve.caucionByDays;
+      }
+    }
+
+    if (caucionCurve) {
+      ZETA_CONFIG.marketRates.caucionByDays = caucionCurve;
+      updated = true;
     }
 
     // Plazo Fijo
@@ -192,9 +216,24 @@ async function fetchDirectArgentinaDatos() {
       }
     }
 
+    let macroBands = null;
+    try {
+      const mRes = await fetch(ZETA_CONFIG.ratesConfig?.directMacroPlazoFijoUrl || 'https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo', {
+        signal: AbortSignal.timeout(3500)
+      });
+      if (mRes.ok && typeof macroBandsFromArgentinaDatos === 'function') {
+        macroBands = macroBandsFromArgentinaDatos(await mRes.json());
+        if (macroBands) updated = true;
+      }
+    } catch (macroError) {
+      console.info('[Zeta Finance] Sin tramos de Macro en vivo:', macroError.message);
+    }
+
     if (updated) {
-      applyFetchedRates(ZETA_CONFIG.marketRates, new Date(), 'direct');
-      saveRatesToCache(ZETA_CONFIG.marketRates);
+      const payload = { ...ZETA_CONFIG.marketRates };
+      if (macroBands) payload.macroPlazoFijoBands = macroBands;
+      applyFetchedRates(payload, new Date(), 'direct');
+      saveRatesToCache(payload);
       return true;
     }
   } catch (e) {
@@ -209,7 +248,16 @@ function applyFetchedRates(newRates, timestamp, origin) {
   }
   if (newRates.plazoFijoTNA) ZETA_CONFIG.marketRates.plazoFijoTNA = newRates.plazoFijoTNA;
   if (newRates.lecapTNA) ZETA_CONFIG.marketRates.lecapTNA = newRates.lecapTNA;
-  if (newRates.lecapDetails) ZETA_CONFIG.marketRates.lecapDetails = newRates.lecapDetails;
+  if (newRates.lecapDetails) {
+    // Merge: el scrapeo de Rava no trae días al vencimiento y no debe pisar el de config.
+    ZETA_CONFIG.marketRates.lecapDetails = {
+      ...(ZETA_CONFIG.marketRates.lecapDetails || {}),
+      ...newRates.lecapDetails
+    };
+  }
+  if (Array.isArray(newRates.macroPlazoFijoBands) && newRates.macroPlazoFijoBands.length) {
+    liveMacroBands = newRates.macroPlazoFijoBands;
+  }
   if (newRates.usdRateAnnual) ZETA_CONFIG.marketRates.usdRateAnnual = newRates.usdRateAnnual;
 
   updateInstrumentRates();
@@ -439,8 +487,8 @@ function applyStudioBranding(studio) {
 ========================================================== */
 
 function setCurrency(currency) {
-  if (selectedInstrument === 'cheques') {
-    chequePlazoDays = currentPlazo;
+  if (selectedInstrument === 'cheques' || selectedInstrument === 'macroLetra') {
+    rememberPlazo(selectedInstrument);
     currentPlazo = liquidityPlazo;
   }
   currentCurrency = currency;
@@ -520,19 +568,24 @@ function renderQuickCapitalButtons() {
   });
 }
 
+function rememberPlazo(inst) {
+  if (inst === 'cheques') chequePlazoDays = currentPlazo;
+  else if (inst === 'macroLetra') macroLetraPlazoDays = currentPlazo;
+  else if (currentCurrency === 'ARS') liquidityPlazo = currentPlazo;
+}
+
+function plazoForInstrument(inst) {
+  if (inst === 'cheques') return chequePlazoDays;
+  if (inst === 'macroLetra') return macroLetraPlazoDays;
+  return liquidityPlazo;
+}
+
 function selectInstrument(inst) {
   if (currentCurrency === 'USD') return;
-  const wasCheque = selectedInstrument === 'cheques';
-  selectedInstrument = inst;
-
-  if (inst === 'cheques') {
-    if (!wasCheque) {
-      liquidityPlazo = currentPlazo;
-      currentPlazo = chequePlazoDays;
-    }
-  } else if (wasCheque) {
-    chequePlazoDays = currentPlazo;
-    currentPlazo = liquidityPlazo;
+  if (inst !== selectedInstrument) {
+    rememberPlazo(selectedInstrument);
+    selectedInstrument = inst;
+    currentPlazo = plazoForInstrument(inst);
   }
 
   if (inst === 'caucion') {
@@ -543,7 +596,7 @@ function selectInstrument(inst) {
     activeTNA = ZETA_CONFIG.marketRates.plazoFijoTNA;
   }
 
-  if (inst !== 'cheques') {
+  if (inst !== 'cheques' && inst !== 'macroLetra') {
     document.getElementById('input-active-tna').value = activeTNA;
   }
 
@@ -565,9 +618,10 @@ function updateCaucionRateForDays(days) {
     else tna = rates[30];
   }
 
-  activeTNA = tna;
-  document.getElementById('rate-badge-caucion').textContent = `${tna.toFixed(1)}%`;
+  document.getElementById('rate-badge-caucion').textContent = `${Number(tna).toFixed(1)}%`;
+  // Solo la caución toma la TNA del plazo. LECAP y plazo fijo conservan la suya.
   if (selectedInstrument === 'caucion') {
+    activeTNA = tna;
     document.getElementById('input-active-tna').value = tna;
   }
 }
@@ -585,7 +639,24 @@ function updateInstrumentRates() {
     if (vto && rates.lecapDetails.vencimiento) vto.textContent = rates.lecapDetails.vencimiento;
   }
 
-  updateCaucionRateForDays(selectedInstrument === 'cheques' ? liquidityPlazo : currentPlazo);
+  const curveDays = (selectedInstrument === 'cheques' || selectedInstrument === 'macroLetra')
+    ? liquidityPlazo
+    : currentPlazo;
+  updateCaucionRateForDays(curveDays);
+  updateCaucionPillRates();
+  refreshMacroVtoPill();
+
+  const macroBadge = document.getElementById('macro-letra-badge');
+  if (macroBadge) macroBadge.textContent = `${Number(rates.lecapTNA).toFixed(1)}%`;
+}
+
+function updateCaucionPillRates() {
+  const rates = (ZETA_CONFIG.marketRates && ZETA_CONFIG.marketRates.caucionByDays) || {};
+  [3, 7, 10, 15, 30].forEach(days => {
+    const el = document.getElementById('pill-tna-' + days);
+    const tna = Number(rates[days]);
+    if (el && isFinite(tna)) el.textContent = tna.toFixed(1) + '%';
+  });
 }
 
 function updateInstrumentVisuals() {
@@ -599,12 +670,15 @@ function updateInstrumentVisuals() {
   const btnLecap = document.getElementById('btn-inst-lecap');
   const btnPlazo = document.getElementById('btn-inst-plazofijo');
   const btnCheques = document.getElementById('btn-inst-cheques');
+  const btnMacro = document.getElementById('btn-inst-macro-letra');
   const badge = document.getElementById('active-instrument-badge');
+  const idle = "p-3.5 rounded-2xl border text-left transition relative bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700";
 
   [btnCaucion, btnLecap, btnPlazo, btnCheques].forEach(b => {
     if (!b) return;
-    b.className = "p-3.5 rounded-2xl border text-left transition relative bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700";
+    b.className = idle + (b === btnCheques ? " min-w-0" : "");
   });
+  if (btnMacro) btnMacro.className = idle + " sm:col-span-2 min-w-0";
 
   if (selectedInstrument === 'caucion') {
     btnCaucion.className = "p-3.5 rounded-2xl border text-left transition relative bg-blue-500/10 border-blue-500 text-white";
@@ -620,9 +694,14 @@ function updateInstrumentVisuals() {
     badge.textContent = "Plazo Fijo Tradicional";
     badge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30";
   } else if (selectedInstrument === 'cheques' && btnCheques) {
-    btnCheques.className = "p-3.5 rounded-2xl border text-left transition relative bg-violet-500/10 border-violet-500 text-white";
+    btnCheques.className = "p-3.5 rounded-2xl border text-left transition relative bg-violet-500/10 border-violet-500 text-white min-w-0";
     badge.textContent = "Descuento de cheques";
     badge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-violet-500/20 text-violet-300 border border-violet-500/30";
+  } else if (selectedInstrument === 'macroLetra' && btnMacro) {
+    btnMacro.className = "sm:col-span-2 min-w-0 p-3.5 rounded-2xl border text-left transition relative bg-sky-500/10 border-sky-500 text-white";
+    const ticker = ZETA_CONFIG.marketRates?.lecapDetails?.ticker || "LECAP";
+    badge.textContent = `Macro vs ${ticker}`;
+    badge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30";
   }
 }
 
@@ -671,6 +750,56 @@ function setupEventListeners() {
       if (!isNaN(n)) setPlazo(n);
     });
   }
+
+  const plazoMacro = document.getElementById('input-plazo-macro');
+  if (plazoMacro) {
+    plazoMacro.addEventListener('input', () => {
+      const n = parseInt(plazoMacro.value, 10);
+      if (!isNaN(n)) setPlazo(n);
+    });
+  }
+
+  const macroTna = document.getElementById('macro-tna-bank');
+  if (macroTna) {
+    macroTna.addEventListener('input', () => {
+      macroTnaDirty = true;
+      if (isMacroLetraMode()) calculateYield();
+    });
+  }
+  const letraTna = document.getElementById('macro-tna-letra');
+  if (letraTna) {
+    letraTna.addEventListener('input', () => {
+      letraTnaDirty = true;
+      if (isMacroLetraMode()) calculateYield();
+    });
+  }
+  ['macro-bank-label', 'macro-comision', 'macro-derechos'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', () => {
+      if (isMacroLetraMode()) calculateYield();
+    });
+  });
+  const ivaToggle = document.getElementById('macro-aplica-iva');
+  if (ivaToggle) {
+    ivaToggle.addEventListener('change', () => {
+      if (isMacroLetraMode()) calculateYield();
+    });
+  }
+  const resetMacro = document.getElementById('macro-reset-tna');
+  if (resetMacro) {
+    resetMacro.addEventListener('click', () => {
+      macroTnaDirty = false;
+      if (isMacroLetraMode()) calculateYield();
+    });
+  }
+  const resetLetra = document.getElementById('macro-reset-letra');
+  if (resetLetra) {
+    resetLetra.addEventListener('click', () => {
+      letraTnaDirty = false;
+      if (isMacroLetraMode()) calculateYield();
+    });
+  }
 }
 
 function setCapital(amount) {
@@ -680,12 +809,13 @@ function setCapital(amount) {
 }
 
 function setPlazo(days) {
-  const max = isChequeMode() ? 180 : 35;
+  const max = isChequeMode() ? 180 : (isMacroLetraMode() ? 365 : 35);
   let safe = parseInt(days, 10);
   if (!isFinite(safe) || safe < 1) safe = 1;
   if (safe > max) safe = max;
   currentPlazo = safe;
   if (isChequeMode()) chequePlazoDays = safe;
+  else if (isMacroLetraMode()) macroLetraPlazoDays = safe;
   else if (currentCurrency === 'ARS') liquidityPlazo = safe;
 
   const slider = document.getElementById('slider-plazo');
@@ -697,10 +827,14 @@ function setPlazo(days) {
   if (plazoExact && String(plazoExact.value) !== String(safe)) {
     plazoExact.value = String(safe);
   }
+  const plazoMacro = document.getElementById('input-plazo-macro');
+  if (plazoMacro && String(plazoMacro.value) !== String(safe)) {
+    plazoMacro.value = String(safe);
+  }
   document.getElementById('display-plazo').textContent = `${safe} días`;
   updatePlazoPills();
 
-  if (currentCurrency === 'ARS' && selectedInstrument !== 'cheques') {
+  if (currentCurrency === 'ARS' && selectedInstrument !== 'cheques' && selectedInstrument !== 'macroLetra') {
     updateCaucionRateForDays(safe);
   }
 
@@ -708,11 +842,11 @@ function setPlazo(days) {
 }
 
 function updatePlazoPills() {
-  const activeBorder = isChequeMode() ? 'border-violet-500' : 'border-blue-500';
-  const activeBg = isChequeMode() ? 'bg-violet-500/10' : 'bg-blue-500/10';
+  const activeBorder = isChequeMode() ? 'border-violet-500' : (isMacroLetraMode() ? 'border-sky-500' : 'border-blue-500');
+  const activeBg = isChequeMode() ? 'bg-violet-500/10' : (isMacroLetraMode() ? 'bg-sky-500/10' : 'bg-blue-500/10');
   document.querySelectorAll('.plazo-pill').forEach(btn => {
     const d = parseInt(btn.getAttribute('data-days'), 10);
-    btn.classList.remove('border-blue-500', 'bg-blue-500/10', 'border-violet-500', 'bg-violet-500/10', 'border-slate-700', 'bg-slate-800');
+    btn.classList.remove('border-blue-500', 'bg-blue-500/10', 'border-violet-500', 'bg-violet-500/10', 'border-sky-500', 'bg-sky-500/10', 'border-slate-700', 'bg-slate-800');
     if (d === currentPlazo) {
       btn.classList.add(activeBorder, activeBg);
     } else {
@@ -728,6 +862,10 @@ function updatePlazoPills() {
 function calculateYield() {
   if (isChequeMode()) {
     renderChequeExperience();
+    return;
+  }
+  if (isMacroLetraMode()) {
+    renderMacroLetraExperience();
     return;
   }
 
@@ -895,31 +1033,46 @@ function isChequeMode() {
   return currentCurrency === 'ARS' && selectedInstrument === 'cheques';
 }
 
+function isMacroLetraMode() {
+  return currentCurrency === 'ARS' && selectedInstrument === 'macroLetra';
+}
+
 function syncChequeMode() {
-  const on = isChequeMode();
+  const cheque = isChequeMode();
+  const macro = isMacroLetraMode();
+  const single = !cheque && !macro;
   const toggle = (id, show) => {
     const el = document.getElementById(id);
     if (el) el.classList.toggle('hidden', !show);
   };
 
-  toggle('cheque-rate-overrides', on);
-  toggle('cheque-plazo-direct', on);
-  toggle('plazo-pills-cheques', on);
-  toggle('plazo-pills-liquidity', !on);
-  toggle('cheque-comparison-card', on);
-  toggle('cheque-result-stack', on);
-  toggle('tna-adjust-row', !on);
-  toggle('multiasset-table-card', !on);
-  toggle('liquidity-result-card', !on);
-  toggle('liquidity-opportunity-card', !on);
+  toggle('cheque-rate-overrides', cheque);
+  toggle('cheque-plazo-direct', cheque);
+  toggle('plazo-pills-cheques', cheque);
+  toggle('cheque-comparison-card', cheque);
+  toggle('cheque-result-stack', cheque);
+  toggle('macro-rate-overrides', macro);
+  toggle('macro-plazo-direct', macro);
+  toggle('plazo-pills-macro', macro);
+  toggle('macro-comparison-card', macro);
+  toggle('macro-result-stack', macro);
+  toggle('plazo-pills-liquidity', single);
+  toggle('tna-adjust-row', single);
+  toggle('multiasset-table-card', single);
+  toggle('liquidity-result-card', single);
+  toggle('liquidity-opportunity-card', single);
 
   const capitalLabel = document.getElementById('label-capital-input');
   const capitalHint = document.getElementById('label-capital-hint');
   const plazoLabel = document.getElementById('label-plazo');
-  if (on) {
+  if (cheque) {
     if (capitalLabel) capitalLabel.textContent = 'Monto a descontar';
     if (capitalHint) capitalHint.textContent = 'Valor nominal del cheque';
     if (plazoLabel) plazoLabel.textContent = 'Plazo del cheque (días)';
+  } else if (macro) {
+    if (capitalLabel) capitalLabel.textContent = 'Capital a colocar';
+    if (capitalHint) capitalHint.textContent = 'El tramo de Macro depende del monto';
+    if (plazoLabel) plazoLabel.textContent = 'Días al vencimiento de la letra';
   } else if (currentCurrency === 'ARS') {
     if (capitalLabel) capitalLabel.textContent = 'Capital a Rentabilizar';
     if (capitalHint) capitalHint.textContent = 'Mínimo sugerido: $500.000 ARS';
@@ -932,9 +1085,10 @@ function syncChequeMode() {
 
   const slider = document.getElementById('slider-plazo');
   if (slider) {
-    slider.max = on ? '180' : '35';
-    slider.classList.toggle('accent-violet-500', on);
-    slider.classList.toggle('accent-blue-500', !on);
+    slider.max = cheque ? '180' : (macro ? '365' : '35');
+    slider.classList.toggle('accent-violet-500', cheque);
+    slider.classList.toggle('accent-sky-500', macro);
+    slider.classList.toggle('accent-blue-500', !cheque && !macro);
   }
 }
 
@@ -1177,6 +1331,367 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+function letraDaysFromConfig() {
+  const details = ZETA_CONFIG.marketRates && ZETA_CONFIG.marketRates.lecapDetails;
+  const days = Number(details && details.diasAlVencimiento);
+  if (isFinite(days) && days >= 1) return Math.round(days);
+  return 38;
+}
+
+function getMacroBands() {
+  if (Array.isArray(liveMacroBands) && liveMacroBands.length) return liveMacroBands;
+  const cfg = ZETA_CONFIG.macroVsLetra;
+  return (cfg && cfg.bands) || [];
+}
+
+function getMacroLetraConfig() {
+  const cfg = (typeof ZETA_CONFIG !== 'undefined' && ZETA_CONFIG.macroVsLetra) || {};
+  const letra = cfg.letra || {};
+  return {
+    bankLabel: cfg.bankLabel || 'Banco Macro',
+    minDias: numberOr(cfg.minDias, 30),
+    letra: {
+      brokerLabel: letra.brokerLabel || 'Balanz',
+      comisionPct: numberOr(letra.comisionPct, 0.1),
+      aplicaIva: !!letra.aplicaIva,
+      iva: numberOr(letra.iva, 0.21),
+      derechosPct: numberOr(letra.derechosPct, 0)
+    }
+  };
+}
+
+function initMacroLetraControls() {
+  const cfg = getMacroLetraConfig();
+  const label = document.getElementById('macro-bank-label');
+  const tnaBank = document.getElementById('macro-tna-bank');
+  const tnaLetra = document.getElementById('macro-tna-letra');
+  const comision = document.getElementById('macro-comision');
+  const derechos = document.getElementById('macro-derechos');
+  const iva = document.getElementById('macro-aplica-iva');
+  const ivaLabel = document.getElementById('macro-iva-label');
+  const plazo = document.getElementById('input-plazo-macro');
+  if (label) {
+    label.value = cfg.bankLabel;
+    label.placeholder = cfg.bankLabel;
+  }
+  if (tnaLetra) tnaLetra.value = String(ZETA_CONFIG.marketRates.lecapTNA);
+  if (comision) comision.value = String(cfg.letra.comisionPct);
+  if (derechos) derechos.value = String(cfg.letra.derechosPct);
+  if (iva) iva.checked = cfg.letra.aplicaIva;
+  if (ivaLabel) ivaLabel.textContent = formatPercentPoints(cfg.letra.iva * 100).replace(',00%', '%');
+  if (plazo) plazo.value = String(macroLetraPlazoDays);
+  const band = pickMacroBand(getMacroBands(), currentCapital, macroLetraPlazoDays);
+  if (tnaBank) tnaBank.value = String(band ? band.tna : 19.5);
+  refreshMacroVtoPill();
+}
+
+function refreshMacroVtoPill() {
+  const days = letraDaysFromConfig();
+  const btn = document.getElementById('macro-pill-vto');
+  if (!btn) return;
+  btn.setAttribute('data-days', String(days));
+  const label = btn.querySelector('[data-vto-label]');
+  const sub = btn.querySelector('[data-vto-sub]');
+  if (label) label.textContent = days + 'd';
+  if (sub) sub.textContent = 'Vto. letra';
+}
+
+function readSignedNumber(id, fallback) {
+  const el = document.getElementById(id);
+  if (!el) return fallback;
+  const raw = String(el.value).trim().replace(',', '.');
+  if (raw === '' || raw === '-' || raw === '+') return fallback;
+  const n = parseFloat(raw);
+  return isFinite(n) ? n : fallback;
+}
+
+function formatCompactArs(amount, edge) {
+  const n = Number(amount);
+  if (!isFinite(n)) return '';
+  if (Math.abs(n) >= 1000000) {
+    const millions = n / 1000000;
+    const nextMillion = Math.ceil(millions) * 1000000;
+    if (edge === 'max' && n < nextMillion && nextMillion - n < 100) {
+      return 'menos de $' + Math.ceil(millions) + ' M';
+    }
+    const rounded = Math.round(millions * 10) / 10;
+    const text = rounded % 1 === 0 ? String(rounded.toFixed(0)) : String(rounded).replace('.', ',');
+    return '$' + text + ' M';
+  }
+  return formatMoneyARS(n);
+}
+
+function describeMacroBand(band) {
+  if (!band) return '';
+  const plazo = band.plazoMax != null
+    ? band.plazoMin + '–' + band.plazoMax + ' días'
+    : 'desde ' + band.plazoMin + ' días';
+  let money = '';
+  if (band.montoMax != null && (band.montoMin == null || band.montoMin <= 1)) {
+    money = formatCompactArs(band.montoMax, 'max');
+  } else if (band.montoMin != null && band.montoMax == null) {
+    money = 'desde ' + formatCompactArs(band.montoMin, 'min');
+  } else if (band.montoMin != null && band.montoMax != null) {
+    money = 'desde ' + formatCompactArs(band.montoMin, 'min') + ' hasta ' + formatCompactArs(band.montoMax, 'max');
+  }
+  return money ? plazo + ' · ' + money : plazo;
+}
+
+function syncMacroReferenceInputs() {
+  const cfg = getMacroLetraConfig();
+  const marketTna = Number(ZETA_CONFIG.marketRates.lecapTNA);
+  if (!letraTnaDirty) {
+    const input = document.getElementById('macro-tna-letra');
+    if (input && isFinite(marketTna)) input.value = String(marketTna);
+  }
+  const band = (currentPlazo >= cfg.minDias)
+    ? pickMacroBand(getMacroBands(), currentCapital, currentPlazo)
+    : null;
+  if (!macroTnaDirty && band) {
+    const input = document.getElementById('macro-tna-bank');
+    if (input) input.value = String(band.tna);
+  }
+  return band;
+}
+
+function getMacroLetraScenario() {
+  const cfg = getMacroLetraConfig();
+  const labelInput = document.getElementById('macro-bank-label');
+  const typedLabel = labelInput ? labelInput.value.trim() : '';
+  const bankLabel = typedLabel || cfg.bankLabel;
+  const band = syncMacroReferenceInputs();
+  const grossTna = readSignedNumber('macro-tna-letra', ZETA_CONFIG.marketRates.lecapTNA);
+  const fees = {
+    comisionPct: readOptionalNumber('macro-comision', cfg.letra.comisionPct),
+    derechosPct: readOptionalNumber('macro-derechos', cfg.letra.derechosPct),
+    aplicaIva: !!(document.getElementById('macro-aplica-iva') && document.getElementById('macro-aplica-iva').checked),
+    iva: cfg.letra.iva
+  };
+  const letra = calcLetraNeta(currentCapital, currentPlazo, grossTna, fees);
+  const details = ZETA_CONFIG.marketRates.lecapDetails || {};
+  const ticker = details.ticker || 'LECAP';
+  const vtoDays = letraDaysFromConfig();
+
+  let bank = null;
+  let bankReason = null;
+  if (currentPlazo < cfg.minDias) {
+    bankReason = 'min';
+  } else if (!macroTnaDirty && !band) {
+    bankReason = 'sin-tramo';
+  } else {
+    const tna = macroTnaDirty
+      ? readOptionalNumber('macro-tna-bank', band ? band.tna : 0)
+      : band.tna;
+    bank = calcPlazoFijoSimple(currentCapital, currentPlazo, tna);
+    if (bank.total == null) bankReason = 'sin-tramo';
+  }
+
+  let winner = null;
+  let conviene = 'No comparable';
+  if (bank && bank.total != null && letra.total != null) {
+    const delta = letra.total - bank.total;
+    if (Math.abs(delta) < 0.5) {
+      winner = 'empate';
+      conviene = 'Empate';
+    } else if (delta > 0) {
+      winner = 'letra';
+      conviene = 'Letra corta';
+    } else {
+      winner = 'banco';
+      conviene = bankLabel;
+    }
+  } else if (bankReason === 'min') {
+    conviene = 'PF no disponible';
+  } else if (bankReason === 'sin-tramo') {
+    conviene = 'Falta TNA Macro';
+  }
+
+  return {
+    bankLabel,
+    brokerLabel: cfg.letra.brokerLabel,
+    ticker,
+    vtoDays,
+    band,
+    bankReason,
+    bank,
+    letra,
+    fees,
+    winner,
+    conviene,
+    monto: currentCapital,
+    plazo: currentPlazo,
+    minDias: cfg.minDias
+  };
+}
+
+function renderMacroLetraExperience() {
+  const scenario = getMacroLetraScenario();
+  const grid = document.getElementById('macro-comparison-grid');
+  if (grid) {
+    grid.innerHTML = [
+      renderMacroBankCard(scenario),
+      renderMacroLetraCard(scenario)
+    ].join('');
+  }
+
+  const note = document.getElementById('macro-comparison-note');
+  if (note) {
+    const vtoNote = scenario.plazo === scenario.vtoDays
+      ? `Plazo del vencimiento de ${scenario.ticker} (${scenario.vtoDays} días).`
+      : `Estás simulando ${scenario.plazo} días. ${scenario.ticker} vence en ${scenario.vtoDays}.`;
+    note.textContent = vtoNote + ' Mismo capital de los dos lados.';
+  }
+
+  const bandHint = document.getElementById('macro-band-hint');
+  if (bandHint) {
+    if (scenario.bankReason === 'min') {
+      bandHint.textContent = `El plazo fijo pide al menos ${scenario.minDias} días.`;
+    } else if (scenario.band) {
+      const using = scenario.bank ? formatPercentPoints(scenario.bank.tna) : '';
+      const ref = `Referencia ${formatPercentPoints(scenario.band.tna)} · ${describeMacroBand(scenario.band)}`;
+      bandHint.textContent = macroTnaDirty && scenario.bank
+        ? `${ref}. En esta reunión: ${using}.`
+        : ref;
+    } else if (macroTnaDirty) {
+      bandHint.textContent = 'Sin tramo publicado para este plazo y monto. Usando la TNA de la reunión.';
+    } else {
+      bandHint.textContent = 'Macro no publica TNA para este plazo y monto. Cargala para esta reunión.';
+    }
+  }
+
+  const letraHint = document.getElementById('macro-letra-hint');
+  if (letraHint) {
+    const market = formatPercentPoints(ZETA_CONFIG.marketRates.lecapTNA);
+    letraHint.textContent = letraTnaDirty
+      ? `TNA de mercado ${market}. En esta reunión: ${formatPercentPoints(scenario.letra.tnaBruta)}.`
+      : `TNA bruta de ${scenario.ticker}: ${market}.`;
+  }
+
+  const delta = (scenario.bank && scenario.bank.total != null && scenario.letra.total != null)
+    ? scenario.letra.total - scenario.bank.total
+    : null;
+
+  if (scenario.bankReason === 'min') {
+    setText('macro-hero-kicker', 'A recibir con la letra');
+    setText('macro-hero-delta', formatMoneyARS(scenario.letra.total));
+    setText('macro-hero-subtitle', `Plazo fijo no disponible bajo ${scenario.minDias} días. Esto es lo que deja la letra.`);
+    setText('macro-winner-badge', 'PF no disponible');
+  } else if (scenario.bankReason === 'sin-tramo' && !(scenario.bank && scenario.bank.total != null)) {
+    setText('macro-hero-kicker', 'A recibir con la letra');
+    setText('macro-hero-delta', formatMoneyARS(scenario.letra.total));
+    setText('macro-hero-subtitle', 'Cargá la TNA de Macro para comparar. Mientras tanto, el total de la letra.');
+    setText('macro-winner-badge', 'Falta TNA Macro');
+  } else if (scenario.winner === 'empate') {
+    setText('macro-hero-kicker', 'Diferencia a cobrar');
+    setText('macro-hero-delta', formatMoneyARS(0));
+    setText('macro-hero-subtitle', 'Los dos lados dejan el mismo monto.');
+    setText('macro-winner-badge', 'Empate');
+  } else if (delta != null && delta > 0) {
+    setText('macro-hero-kicker', 'Diferencia a cobrar');
+    setText('macro-hero-delta', '+' + formatMoneyARS(delta));
+    setText('macro-hero-subtitle', `La letra deja más que ${scenario.bankLabel}.`);
+    setText('macro-winner-badge', 'Conviene la letra');
+  } else if (delta != null) {
+    setText('macro-hero-kicker', 'Diferencia a cobrar');
+    setText('macro-hero-delta', '+' + formatMoneyARS(Math.abs(delta)));
+    setText('macro-hero-subtitle', `${scenario.bankLabel} deja más que la letra.`);
+    setText('macro-winner-badge', `Conviene ${scenario.bankLabel}`);
+  } else {
+    setText('macro-hero-delta', '—');
+    setText('macro-hero-subtitle', 'Completá capital, días y tasas.');
+    setText('macro-winner-badge', 'No comparable');
+  }
+
+  setText('macro-hero-capital', formatMoneyARS(scenario.monto));
+  setText('macro-hero-letra-label', `Recibe con ${scenario.ticker}`);
+  setText('macro-hero-letra', formatMoneyARS(scenario.letra.total));
+  setText('macro-hero-bank-label', `Recibe con ${scenario.bankLabel}`);
+  setText('macro-hero-bank', scenario.bank && scenario.bank.total != null ? formatMoneyARS(scenario.bank.total) : 'N/A');
+  setText('macro-hero-tna-neta', scenario.letra.tnaNeta == null
+    ? '—'
+    : formatPercentPoints(scenario.letra.tnaNeta) + ' neta · ' + formatPercentPoints(scenario.letra.tnaBruta) + ' bruta');
+
+  setText('modal-instrumento', `Macro vs ${scenario.ticker}`);
+  setText('modal-capital-plazo', `${formatMoneyARS(scenario.monto)} • ${scenario.plazo}d`);
+  setText('modal-ganancia-label', 'Conviene');
+  setText('modal-ganancia', scenario.conviene);
+}
+
+function renderMacroBankCard(scenario) {
+  const won = scenario.winner === 'banco';
+  const quote = scenario.bank;
+  const border = won ? 'border-emerald-500 bg-emerald-500/10' : 'border-slate-800 bg-slate-950/40';
+  const badge = won
+    ? '<span class="shrink-0 text-[10px] font-bold uppercase tracking-wide text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full">Conviene</span>'
+    : '';
+  const na = !quote || quote.total == null;
+  const note = scenario.bankReason === 'min'
+    ? `No se constituye a menos de ${scenario.minDias} días.`
+    : (scenario.bankReason === 'sin-tramo' ? 'Sin TNA publicada para este plazo y monto.' : 'Interés simple, sin comisión.');
+
+  return `
+    <article class="min-w-0 rounded-2xl border p-4 ${border}">
+      <div class="flex items-start justify-between gap-2 mb-3">
+        <div class="min-w-0">
+          <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Plazo fijo</p>
+          <h5 class="font-bold text-white text-sm leading-snug">${escapeHtml(scenario.bankLabel)}</h5>
+          <p class="text-[11px] text-slate-400 mt-0.5">${na ? 'TNA no aplicable' : 'TNA ' + formatPercentPoints(quote.tna)}</p>
+        </div>
+        ${badge}
+      </div>
+      <div class="space-y-1.5 text-xs">
+        ${chequeMoneyRow('Interés', na ? null : quote.interes)}
+      </div>
+      <div class="mt-3 rounded-xl ${won ? 'bg-emerald-500/15' : 'bg-slate-800/80'} px-3 py-2.5 flex items-center justify-between gap-2">
+        <span class="text-[11px] font-bold uppercase tracking-wide ${won ? 'text-emerald-200' : 'text-slate-300'}">A recibir</span>
+        <span class="font-mono font-bold ${won ? 'text-emerald-300' : 'text-white'} text-sm text-right">${na ? 'N/A' : formatMoneyARS(quote.total)}</span>
+      </div>
+      <p class="mt-3 text-[10px] text-slate-500 leading-relaxed">${escapeHtml(note)}</p>
+    </article>
+  `;
+}
+
+function renderMacroLetraCard(scenario) {
+  const won = scenario.winner === 'letra' && scenario.bank && scenario.bank.total != null;
+  const quote = scenario.letra;
+  const border = won ? 'border-emerald-500 bg-emerald-500/10' : 'border-slate-800 bg-slate-950/40';
+  const badge = won
+    ? '<span class="shrink-0 text-[10px] font-bold uppercase tracking-wide text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full">Conviene</span>'
+    : '';
+  const ivaTxt = scenario.fees.aplicaIva ? 'con IVA' : 'sin IVA';
+  const costTxt = `Comisión ${formatPercentPoints(quote.comisionPct)} ${ivaTxt} · Derechos ${formatPercentPoints(quote.derechosPct)}`;
+
+  return `
+    <article class="min-w-0 rounded-2xl border p-4 ${border}">
+      <div class="flex items-start justify-between gap-2 mb-3">
+        <div class="min-w-0">
+          <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Letra corta</p>
+          <h5 class="font-bold text-white text-sm leading-snug">${escapeHtml(scenario.ticker)}</h5>
+          <p class="text-[11px] text-slate-400 mt-0.5">TNA bruta ${formatPercentPoints(quote.tnaBruta)} · neta ${formatPercentPoints(quote.tnaNeta)}</p>
+        </div>
+        ${badge}
+      </div>
+      <div class="space-y-1.5 text-xs">
+        ${chequePctPointsRow('TNA bruta', quote.tnaBruta)}
+        ${chequePctPointsRow('TNA neta', quote.tnaNeta)}
+        ${chequeMoneyRow('Interés neto', quote.interes)}
+      </div>
+      <div class="mt-3 rounded-xl ${won ? 'bg-emerald-500/15' : 'bg-slate-800/80'} px-3 py-2.5 flex items-center justify-between gap-2">
+        <span class="text-[11px] font-bold uppercase tracking-wide ${won ? 'text-emerald-200' : 'text-slate-300'}">A recibir</span>
+        <span class="font-mono font-bold ${won ? 'text-emerald-300' : 'text-white'} text-sm text-right">${formatMoneyARS(quote.total)}</span>
+      </div>
+      <p class="mt-3 text-[10px] text-slate-500 leading-relaxed">${escapeHtml(costTxt)}. ${escapeHtml(scenario.brokerLabel)}, compra al vencimiento. Sin membresía.</p>
+    </article>
+  `;
+}
+
+function chequePctPointsRow(label, points) {
+  return `<div class="flex items-baseline justify-between gap-3">
+    <span class="text-slate-400">${label}</span>
+    <span class="font-mono text-slate-200 text-right">${formatPercentPoints(points)}</span>
+  </div>`;
+}
+
 function buildLeadPayload(contact) {
   const base = {
     studio: activeStudio ? activeStudio.name : 'Estudio Aliado',
@@ -1215,6 +1730,34 @@ function buildLeadPayload(contact) {
       tna: scenario.zeta.tnaDesc,
       rendimiento: Math.round(scenario.zeta.montoRecibido - scenario.bank.montoRecibido),
       resumen: `Descuento de cheques · ${scenario.bankLabel} CFT ef. ${formatRatioPct(scenario.bank.cftEfectivo)} · Zeta CFT ef. ${formatRatioPct(scenario.zeta.cftEfectivo)} · Conviene: ${scenario.conviene}`
+    };
+  }
+
+  if (isMacroLetraMode()) {
+    const scenario = getMacroLetraScenario();
+    const bankTotal = scenario.bank && scenario.bank.total != null ? roundMoney(scenario.bank.total) : null;
+    const letraTotal = scenario.letra.total == null ? null : roundMoney(scenario.letra.total);
+    const delta = (bankTotal != null && letraTotal != null) ? Math.round((letraTotal - bankTotal) * 100) / 100 : null;
+    return {
+      ...base,
+      currency: 'ARS',
+      instrument: 'macro_vs_letra',
+      monto: roundMoney(scenario.monto),
+      plazo: scenario.plazo,
+      bankLabel: scenario.bankLabel,
+      ticker: scenario.ticker,
+      tnaMacro: scenario.bank ? scenario.bank.tna : null,
+      tnaLetraBruta: scenario.letra.tnaBruta,
+      tnaLetraNeta: scenario.letra.tnaNeta == null ? null : Math.round(scenario.letra.tnaNeta * 100) / 100,
+      comisionPct: scenario.letra.comisionPct,
+      aplicaIva: scenario.fees.aplicaIva,
+      derechosPct: scenario.letra.derechosPct,
+      totalMacro: bankTotal,
+      totalLetra: letraTotal,
+      conviene: scenario.conviene,
+      tna: scenario.letra.tnaNeta,
+      rendimiento: delta == null ? 0 : Math.round(delta),
+      resumen: `Macro vs ${scenario.ticker} · ${scenario.bankLabel} ${bankTotal == null ? 'N/A' : formatMoneyARS(bankTotal)} · Letra neta ${letraTotal == null ? 'N/A' : formatMoneyARS(letraTotal)} · Conviene: ${scenario.conviene}`
     };
   }
 

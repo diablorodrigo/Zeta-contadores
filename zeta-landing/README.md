@@ -56,6 +56,34 @@ Las fórmulas están comentadas en `cheque-discount.js`. Si eligen cheques, el l
 
 ---
 
+## Plazo fijo Macro vs letra corta
+
+Instrumento **Plazo fijo Macro vs letra corta**. Misma idea que el descuento de cheques: dos columnas, capital y días, badge de quién conviene y la plata de cada lado. No reemplaza la LECAP suelta ni la caución.
+
+En `config.js`, bloque `macroVsLetra`:
+
+- `bankLabel`: "Banco Macro". Se puede cambiar solo para la reunión.
+- `bands`: tramos de ejemplo (monto × días → TNA). El de 30 días hasta $5 M está en 19,5%. Si `/api/rates` trae `macroPlazoFijoBands` desde ArgentinaDatos, pisan estos presets hasta que el contador edite la TNA.
+- `letra.comisionPct`: 0,10 (tope publicado de Balanz para letras en pesos, cargo único sobre el monto, no una TNA).
+- `letra.aplicaIva`: `false`. El IVA 21% se puede prender en la reunión.
+- `letra.derechosPct`: 0. La membresía mensual no entra en la cuenta.
+
+La TNA bruta de la letra es `marketRates.lecapTNA` (y el ticker / días de `lecapDetails`). En la reunión se pueden pisar la TNA de Macro, la TNA bruta, la comisión, el IVA y los derechos. No se guardan.
+
+El plazo arranca en los días al vencimiento de la letra. Bajo 30 días el plazo fijo figura N/A.
+
+Fórmulas en `macro-vs-letra.js`. El lead manda `instrument: "macro_vs_letra"`.
+
+---
+
+## Caución por plazo
+
+`/api/rates` toma primero BYMA (`POST https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/cauciones`, body `{}`, filas `denominationCcy === "ARS"`). La TNA es `trade`, si no `vwap`, si no el promedio de bid y offer (vienen en decimal: 0,212 = 21,2%). Esos días se meten en los baldes 3 / 7 / 10 / 15 / 30 si caen a lo sumo a 3 días del balde.
+
+ArgentinaDatos `/cauciones/ars` queda de respaldo: muchas veces responde `[]` (snapshot de IOL vacío), incluso con el mercado abierto. Si las dos fuentes fallan, siguen los valores de `marketRates.caucionByDays` en `config.js`. El instrumento Caución usa la TNA del plazo elegido. En los atajos de días se ve la TNA de cada balde.
+
+---
+
 ## 🛠️ Cómo Probar Localmente
 
 Abre el archivo [**`index.html`**](file:///C:/Users/crist/.gemini/antigravity/scratch/zeta-landing/index.html) en tu navegador.
