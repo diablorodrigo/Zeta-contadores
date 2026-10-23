@@ -35,6 +35,26 @@ const ZETA_CONFIG = {
     usdRateAnnual: 5.0  // Tasa fija en dólares
   },
 
+  // Descuento de cheques: tasas de EJEMPLO, editables a mano.
+  // El refresco de caución / LECAP / plazo fijo no las pisa.
+  // Cambialas acá hasta conectar una fuente en vivo.
+  // tnaDesc, derechosPct y tnaArancel van en puntos (27.5 = 27,5%).
+  // iva va en decimal (0.21 = 21%). Las fórmulas están en cheque-discount.js.
+  chequeDiscount: {
+    bankLabel: "Banco Macro",
+    bank: {
+      tnaDesc: 27.5,      // referencia de mercado del ejemplo (TNA de descuento)
+      derechosPct: 0.06,  // derechos de mercado, % sobre el nominal
+      tnaArancel: 1.0     // TNA de arancel
+    },
+    zeta: {
+      tnaDesc: 25.5,      // un poco más competitiva que el banco de ejemplo
+      derechosPct: 0.05,
+      tnaArancel: 0.7
+    },
+    iva: 0.21
+  },
+
   // Listado de Estudios Aliados y sus PINs
   studios: {
     "4829": {
