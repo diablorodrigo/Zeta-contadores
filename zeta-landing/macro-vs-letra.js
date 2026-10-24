@@ -11,15 +11,14 @@
  *   totalLetra  = monto * factorNeto
  *   tnaNeta     = (factorNeto - 1) * (365/dias) * 100
  *
- * La comisión de letras con base "one-shot" (Balanz publica "hasta 0,10%"
- * sobre compra/venta de letras en pesos, sin base mensual ni TNA) se carga
- * una sola vez sobre el nocional de compra. No se prorratea como una TNA.
- * El IVA solo multiplica esa comisión cuando el tarifario marca IVA adicional.
- * En títulos públicos ComparaTasas no lo suma salvo ese flag: el default va
- * apagado y se puede prender en la reunión.
- * Los derechos de mercado, si se cargan, se suman en puntos sobre el nocional
- * y sin IVA extra. Para Balanz letras ComparaTasas no publica derecho: default 0.
- * La membresía o el abono mensual del plan NO se amortiza en la TNA.
+ * La comisión de letras (Balanz, "hasta 0,10%" sobre compra/venta en pesos)
+ * se carga una sola vez sobre el nocional de compra. No hay venta si se
+ * mantiene al vencimiento. El IVA multiplica esa comisión cuando aplicaIva
+ * está prendido (el default de config.js lo está).
+ * Los derechos de mercado se suman sobre el nocional y sin IVA: en letras
+ * son un título público. El default es el 0,001% del cuadro BYMA de agosto
+ * de 2026. La membresía mensual no se amortiza. El impuesto a los débitos
+ * y créditos se aplica aparte, en broker-costs.js.
  *
  * Plazo fijo, interés simple (la misma convención del simulador y de
  * ComparaTasas al comparar contra el PF del plazo de la letra):

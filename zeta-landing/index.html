@@ -158,7 +158,7 @@
             Comparador Multiactivo de Liquidez
           </div>
           <h1 class="text-2xl sm:text-3xl font-bold text-white tracking-tight">Estrategias de Colocación Transitoria</h1>
-          <p class="text-slate-400 text-sm">Compara cauciones, plazos fijos, LECAPs, dólares, descuento de cheques y plazo fijo Macro contra letra corta.</p>
+          <p class="text-slate-400 text-sm">Compara cauciones, un FCI de liquidez, plazos fijos, LECAPs, dólares, descuento de cheques y plazo fijo Macro contra letra corta.</p>
         </div>
 
         <!-- SELECTOR DE MONEDA: PESOS vs DÓLARES -->
@@ -365,7 +365,7 @@
                     <span class="text-xs font-bold">Caución Bursátil</span>
                     <span id="rate-badge-caucion" class="text-[11px] font-mono font-bold text-blue-400 bg-blue-950 px-1.5 py-0.5 rounded">21.5%</span>
                   </div>
-                  <p class="text-[11px] text-slate-400">Garantía BYMA &bull; T+0</p>
+                  <p id="caucion-net-label" class="text-[11px] text-slate-400">Garantía BYMA &bull; T+0</p>
                 </button>
 
                 <!-- 2. LECAP Corta -->
@@ -380,6 +380,17 @@
                   <p class="text-[11px] text-slate-400 flex items-center justify-between gap-2">
                     <span>Vto: <strong id="lecap-vto-label" class="text-slate-300">30/11/2026</strong></span>
                     <span id="lecap-source-label" class="text-[10px] text-emerald-400/80">config</span>
+                  </p>
+                </button>
+
+                <button onclick="selectInstrument('fci')" id="btn-inst-fci" class="p-3.5 rounded-2xl border text-left transition relative bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700">
+                  <div class="flex items-center justify-between mb-1">
+                    <span class="text-xs font-bold">FCI liquidez</span>
+                    <span id="rate-badge-fci" class="text-[11px] font-mono font-bold text-teal-300 bg-teal-950 px-1.5 py-0.5 rounded">18,28%</span>
+                  </div>
+                  <p class="text-[11px] text-slate-400 flex items-center justify-between gap-2">
+                    <span id="fci-net-label">T+0 &bull; pesos</span>
+                    <span id="fci-source-label" class="text-[10px] text-teal-300/80">config</span>
                   </p>
                 </button>
 
@@ -411,6 +422,22 @@
 
               <p id="lecap-curve" class="text-[11px] leading-relaxed text-slate-500">Letras: esperando cotización.</p>
 
+              <div id="broker-cost-panel" class="rounded-2xl border border-slate-800 bg-slate-950/50 p-3 space-y-2">
+                <p class="text-[11px] font-semibold text-slate-300">Comisiones de referencia: Balanz, editable.</p>
+                <p id="broker-cost-summary" class="text-[11px] leading-relaxed text-slate-500"></p>
+                <label class="flex items-start gap-2 text-[11px] text-slate-300 leading-snug">
+                  <input id="tax-mismo-titular" type="checkbox" class="mt-0.5 accent-sky-500" checked>
+                  <span>Transferencia entre cuentas del mismo titular (exenta)</span>
+                </label>
+                <label class="flex items-start gap-2 text-[11px] text-slate-300 leading-snug">
+                  <input id="tax-queda-broker" type="checkbox" class="mt-0.5 accent-sky-500">
+                  <span>La plata queda en el broker al vencimiento</span>
+                </label>
+                <p class="text-[10px] leading-relaxed text-slate-500">
+                  Ley 25.413: alícuota general 0,6% de débito y 0,6% de crédito (Decreto 380/2001, art. 7). El plazo fijo en el mismo banco no lo paga. Dejar la plata en el FCI evita la vuelta al banco. Las MiPyME pueden computar una parte como pago a cuenta de Ganancias según la categoría; el porcentaje lo confirma el contador y acá no se resta.
+                </p>
+              </div>
+
               <!-- Opción en DÓLARES -->
               <div id="usd-instruments" class="hidden p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30">
                 <div class="flex items-center justify-between">
@@ -435,7 +462,7 @@
             <div class="flex items-center justify-between text-xs">
               <span class="text-slate-400 flex items-center gap-1.5">
                 <i data-lucide="edit-3" class="w-3.5 h-3.5 text-blue-400"></i>
-                <span>TNA activa de simulación:</span>
+                <span id="tna-adjust-label">TNA bruta de simulación:</span>
               </span>
               <div class="flex items-center gap-1">
                 <input 
@@ -453,7 +480,7 @@
             <!-- Tasas de cheques: el default sale de config.js; la TNA se puede pisar en la reunión -->
             <div id="cheque-rate-overrides" class="hidden mt-4 pt-4 border-t border-slate-800 space-y-3">
               <p class="text-xs text-slate-400 leading-relaxed">
-                Tasas de ejemplo. Derechos, arancel e IVA salen de <span class="font-mono text-slate-300">config.js</span>.
+                Tasas de ejemplo. Derechos, arancel e IVA salen de <span class="font-mono text-slate-300">config.js</span> y ya están en esta cuenta. No se suma la comisión de letras, de caución ni del FCI.
                 El nombre del banco y la TNA de descuento se pueden ajustar solo para esta simulación.
               </p>
               <div>
@@ -505,7 +532,7 @@
                 Nada de esto se guarda. La TNA de Macro sale del tramo de
                 <span class="font-mono text-slate-300">config.js</span>
                 (o de la última sincronización) y la de la letra, de la TNA bruta vigente.
-                La membresía del broker no se descuenta.
+                La comparación usa la TNA neta. La membresía del broker no se descuenta.
               </p>
               <div>
                 <label for="macro-bank-label" class="block text-xs font-semibold text-slate-300 mb-1.5">Banco del plazo fijo</label>
@@ -572,7 +599,7 @@
                       id="macro-derechos"
                       type="number"
                       min="0"
-                      step="0.01"
+                      step="0.001"
                       inputmode="decimal"
                       class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm outline-none focus:border-sky-500"
                     >
@@ -587,7 +614,7 @@
                 </div>
               </div>
               <p class="text-[10px] text-slate-500 leading-relaxed">
-                La comisión es un cargo único sobre el monto, como en la compra de la letra. El tope publicado de Balanz para letras en pesos es 0,10%. El IVA arranca apagado.
+                Compra única de la letra, sin venta. Comisión Balanz 0,10% con IVA. Derechos BYMA de letras 0,001% (agosto 2026), sin IVA.
               </p>
             </div>
           </div>
@@ -624,8 +651,9 @@
               <i data-lucide="scale" class="w-4 h-4 text-sky-400"></i>
               <span>Plazo fijo vs letra corta</span>
             </h4>
-            <p id="macro-comparison-note" class="text-[11px] text-slate-500 mb-4">Mismo capital y mismos días para los dos lados.</p>
-            <div id="macro-comparison-grid" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+            <p id="macro-comparison-note" class="text-[11px] text-slate-500 mb-2">Mismo capital y mismos días para los tres lados.</p>
+            <p id="macro-breakeven" class="text-[11px] text-slate-400 mb-4"></p>
+            <div id="macro-comparison-grid" class="grid grid-cols-1 md:grid-cols-3 gap-3"></div>
             <p class="mt-4 text-[11px] text-slate-500 leading-relaxed">
               Simulación orientativa, no es consejo de inversión. Zeta Finance CNV 2103.
             </p>
@@ -734,9 +762,10 @@
               </span>
             </div>
 
-            <p class="text-xs text-slate-400 mb-6" id="display-lead-explanation">
+            <p class="text-xs text-slate-400 mb-2" id="display-lead-explanation">
               Intereses netos que ingresan a la cuenta comitente de la PyME.
             </p>
+            <p id="display-net-detail" class="text-[11px] text-slate-500 mb-4"></p>
 
             <!-- Desglose de Cifras -->
             <div class="space-y-3 pt-4 border-t border-slate-800 text-sm">
@@ -920,6 +949,7 @@
   <script src="caucion-buckets.js"></script>
   <script src="lecap-yields.js"></script>
   <script src="macro-vs-letra.js"></script>
+  <script src="broker-costs.js"></script>
   <script src="simulator.js"></script>
 </body>
 </html>

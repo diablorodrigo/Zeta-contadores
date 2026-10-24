@@ -14,7 +14,10 @@
  *    BYMA /free/lebacs (24 hs). TNA, TEA y TIR salen del precio, el vencimiento
  *    y el payoff capitalizado (ficha BYMA o TEM de licitación ya contrastada).
  *    Si las dos fuentes fallan, queda el respaldo de este archivo.
- * 5. Tasa corporativa en dólares (5% fija).
+ * 5. FCI de liquidez inmediata (Balanz Capital Money Market, clase A,
+ *    T+0, pesos). La TNA sale de la cuotaparte CNV vía ArgentinaDatos,
+ *    ventana de 7 días corridos. Si falla, queda el respaldo de este archivo.
+ * 6. Tasa corporativa en dólares (5% fija).
  *
  * Los baldes de caución sin fila viva no se inventan: quedan en el fallback.
  * El descuento de cheques no se toca: sigue en config.js.
@@ -37,6 +40,7 @@ const {
   mergeLecapPrices,
   quoteCalendar
 } = require('../lecap-yields.js');
+const { tnaFromCuotapartes } = require('../broker-costs.js');
 
 const BYMA_CAUCIONES_URL = 'https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/cauciones';
 const BYMA_LEBACS_URL = 'https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/lebacs';
@@ -45,6 +49,8 @@ const DATA912_NOTES_URL = 'https://data912.com/live/arg_notes';
 const ARGENTINA_DATOS_CAUCIONES_URL = 'https://api.argentinadatos.com/v1/finanzas/cauciones/ars';
 const DEPOSITOS_30_URL = 'https://api.argentinadatos.com/v1/finanzas/tasas/depositos30Dias';
 const PLAZO_FIJO_ENTIDADES_URL = 'https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo';
+const FCI_HISTORICO_URL = 'https://api.argentinadatos.com/v1/finanzas/fci/fondos/balanz-capital-money-market-clase-a/historico';
+const FCI_NOMBRE = 'Balanz Capital Money Market - Clase A';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -77,19 +83,32 @@ export default async function handler(req, res) {
       fuente: "config"
     },
     lecaps: [],
-    usdRateAnnual: 5.0
+    usdRateAnnual: 5.0,
+    fciTNA: 18.28,
+    fciDetails: {
+      nombre: FCI_NOMBRE,
+      tna: 18.28,
+      fecha: '2026-10-22',
+      fechaInicio: '2026-10-15',
+      dias: 7,
+      vcp: 12720.788,
+      vcpInicio: 12676.343,
+      plazoRescateDias: 0,
+      fuente: 'config'
+    }
   };
 
   try {
     const liveRates = { ...fallbackRates, caucionByDays: { ...fallbackRates.caucionByDays } };
     const sourcesChecked = [];
 
-    const [bymaRows, argentinaRows, depositos, entidades, lecapCurve] = await Promise.all([
+    const [bymaRows, argentinaRows, depositos, entidades, lecapCurve, fciQuote] = await Promise.all([
       fetchBymaCaucionesArs(),
       fetchJson(ARGENTINA_DATOS_CAUCIONES_URL, 3500),
       fetchJson(DEPOSITOS_30_URL, 3500),
       fetchJson(PLAZO_FIJO_ENTIDADES_URL, 3500),
-      loadLecapCurve()
+      loadLecapCurve(),
+      loadFciQuote()
     ]);
 
     const bymaQuotes = quotesFromBymaRows(bymaRows);
@@ -141,6 +160,32 @@ export default async function handler(req, res) {
       console.warn('[rates-api] LECAP en respaldo de config');
     }
 
+    if (fciQuote) {
+      liveRates.fciTNA = fciQuote.tna;
+      liveRates.fciDetails = {
+        nombre: FCI_NOMBRE,
+        tna: fciQuote.tna,
+        fecha: fciQuote.fecha,
+        fechaInicio: fciQuote.fechaInicio,
+        dias: fciQuote.dias,
+        vcp: fciQuote.vcp,
+        vcpInicio: fciQuote.vcpInicio,
+        plazoRescateDias: 0,
+        fuente: 'cnv'
+      };
+      sourcesChecked.push('fci_cnv');
+      console.info(
+        '[rates-api] FCI',
+        FCI_NOMBRE,
+        'TNA', fciQuote.tna,
+        'dias', fciQuote.dias,
+        fciQuote.fechaInicio, '→', fciQuote.fecha,
+        'vcp', fciQuote.vcpInicio, '→', fciQuote.vcp
+      );
+    } else {
+      console.warn('[rates-api] FCI en respaldo de config');
+    }
+
     return res.status(200).json({
       success: true,
       timestamp: new Date().toISOString(),
@@ -158,6 +203,17 @@ export default async function handler(req, res) {
       lecap: { source: 'config', sourceLabel: 'config', marketOpen: false },
       rates: fallbackRates
     });
+  }
+}
+
+async function loadFciQuote() {
+  try {
+    const data = await fetchJson(FCI_HISTORICO_URL, 8000);
+    const historico = data && Array.isArray(data.historico) ? data.historico : [];
+    return tnaFromCuotapartes(historico, 7);
+  } catch (error) {
+    console.warn('[rates-api] FCI no disponible:', error.message);
+    return null;
   }
 }
 

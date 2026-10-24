@@ -64,11 +64,9 @@ En `config.js`, bloque `macroVsLetra`:
 
 - `bankLabel`: "Banco Macro". Se puede cambiar solo para la reunión.
 - `bands`: tramos de ejemplo (monto × días → TNA). El de 30 días hasta $5 M está en 19,5%. Si `/api/rates` trae `macroPlazoFijoBands` desde ArgentinaDatos, pisan estos presets hasta que el contador edite la TNA.
-- `letra.comisionPct`: 0,10 (tope publicado de Balanz para letras en pesos, cargo único sobre el monto, no una TNA).
-- `letra.aplicaIva`: `false`. El IVA 21% se puede prender en la reunión.
-- `letra.derechosPct`: 0. La membresía mensual no entra en la cuenta.
+- La comisión, el IVA y los derechos salen de `brokerCosts` (Balanz, editable). La letra descuenta una sola compra, con IVA, y el derecho BYMA de letras. La membresía mensual no entra.
 
-La TNA bruta de la letra es `marketRates.lecapTNA` (y el ticker / días de `lecapDetails`). Es la TNA simple a 365 días, no la TIR. En la reunión se pueden pisar la TNA de Macro, la TNA bruta, la comisión, el IVA y los derechos. No se guardan.
+La TNA bruta de la letra es `marketRates.lecapTNA` (y el ticker / días de `lecapDetails`). Es la TNA simple a 365 días, no la TIR. La comparación contra Macro usa la TNA neta. En la reunión se pueden pisar la TNA de Macro, la TNA bruta, la comisión, el IVA y los derechos. No se guardan. El FCI de liquidez entra en la misma comparación.
 
 El plazo arranca en los días al vencimiento de la letra. Bajo 30 días el plazo fijo figura N/A.
 
@@ -89,6 +87,14 @@ ArgentinaDatos `/cauciones/ars` queda de respaldo: muchas veces responde `[]` (s
 El payoff no es 100. Cada letra capitaliza su TEM con base 30/360 (`100 * (1 + TEM) ^ (días / 30)`). La TEM sale de la ficha BYMA. Si la ficha no trae el número, se usa la de licitación ya contrastada con el flujo publicado (S13N6 2,10% paga 109,65; S29E7 2,25% paga 111,68; S30O6 2,55% paga 135,28; S30N6 2,30% paga 129,89). Sin TEM conocida esa especie no entra.
 
 TNA = `(payoff / precio - 1) * 365 / días`. TEA y TIR (un solo pago) = `(payoff / precio) ^ (365 / días) - 1`. Los días corren desde la liquidación 24 hs. La letra que entra en la comparación es la más corta con al menos 30 días; el resto de la curva se muestra abajo. La barra dice la fuente y la hora. Si Data912 y BYMA fallan, queda `marketRates.lecapTNA` en `config.js`. El refresco sigue cada 30 minutos. Las tasas de cheques no se modifican.
+
+## Comisiones, impuesto al cheque y FCI
+
+`brokerCosts` en `config.js` tiene la comisión de Balanz (letras 0,10% con IVA, una sola compra; caución colocadora en pesos 0,50% prorrateada cada 90 días, con IVA) y los derechos BYMA de agosto 2026 (letras contado PPT 0,001%, sin IVA; caución 0,045% proporcional hasta 90 días, sobre el mayor valor, más IVA). La pantalla muestra TNA bruta, TNA neta y el interés en pesos. El descuento de cheques ya trae derechos y arancel: no se le suma esta tabla.
+
+El impuesto de la Ley 25.413 usa 0,6% de débito y 0,6% de crédito (Decreto 380/2001, art. 7). Arranca apagado porque la transferencia entre cuentas del mismo titular está exenta (Decreto 301/2021). El plazo fijo del mismo banco no lo paga. "La plata queda en el broker al vencimiento" saca el crédito de la vuelta. El pago a cuenta de Ganancias depende de la categoría de la MiPyME y no se resta.
+
+El FCI es Balanz Capital Money Market, clase A, pesos, rescate T+0. `/api/rates` lee el histórico de cuotapartes en ArgentinaDatos (fuente CNV) y calcula la TNA de 7 días corridos. El respaldo es 18,28% al 22/10/2026. La ficha CAFCI no cobra suscripción ni rescate; los honorarios (2,45% anual en esa clase) ya están en la cuotaparte.
 
 ---
 
