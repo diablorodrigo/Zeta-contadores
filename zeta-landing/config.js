@@ -16,7 +16,8 @@ const ZETA_CONFIG = {
     bymaLecapUrl: "https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/lebacs",
     bymaFichaUrl: "https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/bnown/fichatecnica/especies/general",
     directPlazoFijoUrl: "https://api.argentinadatos.com/v1/finanzas/tasas/depositos30Dias",
-    directMacroPlazoFijoUrl: "https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo"
+    directMacroPlazoFijoUrl: "https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo",
+    directFciHistoricoUrl: "https://api.argentinadatos.com/v1/finanzas/fci/fondos/balanz-capital-money-market-clase-a/historico"
   },
 
   // TASAS DE RESPALDO. La caución en vivo sale de BYMA (ver api/rates.js).
@@ -58,7 +59,65 @@ const ZETA_CONFIG = {
       { ticker: "S30N6", tna: 22.96, tea: 25.50, tir: 25.50, dias: 35, vencimiento: "30/11/2026", precio: 127.09, payoffPor100: 129.89, fuente: "config" },
       { ticker: "S29E7", tna: 24.73, tea: 27.08, tir: 27.08, dias: 95, vencimiento: "29/01/2027", precio: 104.932, payoffPor100: 111.68, fuente: "config" }
     ],
-    usdRateAnnual: 5.0  // Tasa fija en dólares
+    usdRateAnnual: 5.0, // Tasa fija en dólares
+    // Respaldo del FCI de liquidez. Cuotaparte de Balanz Capital Money Market
+    // clase A, 15/10/2026 a 22/10/2026 (7 días corridos): TNA 18,28%.
+    // /api/rates lo pisa con la serie de ArgentinaDatos (CNV).
+    fciTNA: 18.28,
+    fciDetails: {
+      nombre: "Balanz Capital Money Market - Clase A",
+      tna: 18.28,
+      fecha: "2026-10-22",
+      fechaInicio: "2026-10-15",
+      dias: 7,
+      vcp: 12720.788,
+      vcpInicio: 12676.343,
+      plazoRescateDias: 0,
+      fuente: "config"
+    }
+  },
+
+  // Comisiones de referencia: Balanz, editable. Puntos (0.10 = 0,10%).
+  // iva en decimal (0.21 = 21%). Las fórmulas están en broker-costs.js.
+  // Letras: una sola compra, sin venta. Derechos BYMA agosto 2026, contado
+  // PPT letras 0,0010%, sin IVA (título público).
+  // Caución colocadora en pesos: 0,50% prorrateado cada 90 días, más IVA.
+  // Derecho BYMA de caución 0,0450% proporcional hasta 90 días, sobre el
+  // mayor valor, más IVA.
+  brokerCosts: {
+    label: "Balanz",
+    nota: "Comisiones de referencia: Balanz, editable",
+    iva: 0.21,
+    lecap: {
+      comisionPct: 0.10,
+      aplicaIva: true,
+      derechosPct: 0.001
+    },
+    caucion: {
+      comisionPct90: 0.50,
+      aplicaIva: true,
+      derechosPct90: 0.045,
+      derechosConIva: true
+    },
+    fci: {
+      comisionSuscripcionPct: 0,
+      comisionRescatePct: 0,
+      // Honorarios gerente + depositaria de la clase A (ficha CAFCI). Ya
+      // están en la cuotaparte: no se restan otra vez.
+      honorariosAnualesPct: 2.45,
+      honorariosEnCuotaparte: true
+    }
+  },
+
+  // Ley 25.413. Alícuota general: Decreto 380/2001, art. 7, 6‰ y 6‰.
+  // Default: transferencia entre cuentas del mismo titular, exenta
+  // (Decreto 301/2021). El plazo fijo del mismo banco no se grava.
+  impuestoDebCred: {
+    alicuotaDebito: 0.006,
+    alicuotaCredito: 0.006,
+    mismoTitularExento: true,
+    quedaEnBroker: false,
+    nota: "Las MiPyME pueden computar una parte como pago a cuenta de Ganancias según la categoría. El porcentaje lo confirma el contador. Esta simulación no lo resta."
   },
 
   // Descuento de cheques: tasas de EJEMPLO, editables a mano.
@@ -66,6 +125,8 @@ const ZETA_CONFIG = {
   // Cambialas acá hasta conectar una fuente en vivo.
   // tnaDesc, derechosPct y tnaArancel van en puntos (27.5 = 27,5%).
   // iva va en decimal (0.21 = 21%). Las fórmulas están en cheque-discount.js.
+  // Derechos y arancel ya están en esa cuenta. No se suma encima la comisión
+  // de letras (0,10%), la de caución (0,50% / 90 días) ni la del FCI.
   chequeDiscount: {
     bankLabel: "Banco Macro",
     bank: {
@@ -87,11 +148,9 @@ const ZETA_CONFIG = {
   // esas filas pisan estos presets hasta que el contador edite la TNA en la reunión.
   // La TNA bruta de la letra sale de marketRates.lecapTNA (config o /api/rates).
   //
-  // Comisión: tope publicado de Balanz para compra/venta de letras en pesos
-  // ("hasta 0,10%"), one-shot sobre el nocional. No es la comisión pactada.
-  // aplicaIva queda en false: ComparaTasas solo suma IVA si el tarifario marca
-  // ivaAdicional, y en letras públicas suele no corresponder. derechosPct en 0
-  // porque esa fila no publica derecho de mercado. La membresía mensual no se prorratea.
+  // La comisión, el IVA y los derechos de la letra salen de brokerCosts.
+  // Estos campos quedan como espejo por si algo lee macroVsLetra.letra.
+  // La membresía mensual no se prorratea.
   macroVsLetra: {
     bankLabel: "Banco Macro",
     minDias: 30,
@@ -116,9 +175,9 @@ const ZETA_CONFIG = {
     letra: {
       brokerLabel: "Balanz",
       comisionPct: 0.10,
-      aplicaIva: false,
+      aplicaIva: true,
       iva: 0.21,
-      derechosPct: 0
+      derechosPct: 0.001
     }
   },
 
