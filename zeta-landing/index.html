@@ -177,11 +177,11 @@
         <div class="flex items-center gap-2.5">
           <span id="rate-status-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
           <span id="rate-status-text" class="font-medium text-slate-300">
-            Tasas de mercado sincronizadas
+            LECAP de referencia
           </span>
           <span class="text-slate-600">&bull;</span>
           <span id="rate-last-update" class="text-slate-400 font-mono">
-            Actualizado: hace unos momentos
+            config
           </span>
         </div>
 
@@ -305,21 +305,21 @@
               </div>
               <div id="plazo-pills-macro" class="hidden">
               <div class="grid grid-cols-5 gap-2 mt-3">
-                <button type="button" onclick="setPlazo(30)" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="30">
+                <button type="button" onclick="setMacroPlazo(30)" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="30">
                   <span class="block text-xs font-bold text-white">30d</span>
                   <span class="block text-[10px] text-slate-400">Mín. PF</span>
                 </button>
-                <button type="button" onclick="setPlazo(Number(this.getAttribute('data-days')))" id="macro-pill-vto" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="38">
-                  <span data-vto-label class="block text-xs font-bold text-white">38d</span>
+                <button type="button" onclick="useLetraVto()" id="macro-pill-vto" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="35">
+                  <span data-vto-label class="block text-xs font-bold text-white">35d</span>
                   <span data-vto-sub class="block text-[10px] text-slate-400">Vto. letra</span>
                 </button>
-                <button type="button" onclick="setPlazo(60)" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="60">
+                <button type="button" onclick="setMacroPlazo(60)" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="60">
                   <span class="block text-xs font-bold text-white">60d</span>
                 </button>
-                <button type="button" onclick="setPlazo(90)" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="90">
+                <button type="button" onclick="setMacroPlazo(90)" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="90">
                   <span class="block text-xs font-bold text-white">90d</span>
                 </button>
-                <button type="button" onclick="setPlazo(180)" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="180">
+                <button type="button" onclick="setMacroPlazo(180)" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="180">
                   <span class="block text-xs font-bold text-white">180d</span>
                 </button>
               </div>
@@ -375,11 +375,11 @@
                       <span>LECAP Corta</span>
                       <span id="lecap-ticker-pill" class="text-[10px] font-mono font-bold text-emerald-300 bg-emerald-950/80 border border-emerald-500/30 px-1.5 py-0.2 rounded">S30N6</span>
                     </span>
-                    <span id="rate-badge-lecap" class="text-[11px] font-mono font-bold text-emerald-400 bg-emerald-950 px-1.5 py-0.5 rounded">26.5%</span>
+                    <span id="rate-badge-lecap" class="text-[11px] font-mono font-bold text-emerald-400 bg-emerald-950 px-1.5 py-0.5 rounded">22.96%</span>
                   </div>
-                  <p class="text-[11px] text-slate-400 flex items-center justify-between">
-                    <span>Vto: <strong id="lecap-vto-label" class="text-slate-300">30/Nov/26</strong></span>
-                    <span class="text-[10px] text-emerald-400/80">Mayor liquidez</span>
+                  <p class="text-[11px] text-slate-400 flex items-center justify-between gap-2">
+                    <span>Vto: <strong id="lecap-vto-label" class="text-slate-300">30/11/2026</strong></span>
+                    <span id="lecap-source-label" class="text-[10px] text-emerald-400/80">config</span>
                   </p>
                 </button>
 
@@ -403,11 +403,13 @@
                 <button onclick="selectInstrument('macroLetra')" id="btn-inst-macro-letra" class="sm:col-span-2 p-3.5 rounded-2xl border text-left transition relative bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700 min-w-0">
                   <div class="flex items-center justify-between gap-2 mb-1">
                     <span class="text-xs font-bold leading-snug">Plazo fijo Macro vs letra corta</span>
-                    <span id="macro-letra-badge" class="shrink-0 text-[11px] font-mono font-bold text-sky-300 bg-sky-950 px-1.5 py-0.5 rounded">26.5%</span>
+                    <span id="macro-letra-badge" class="shrink-0 text-[11px] font-mono font-bold text-sky-300 bg-sky-950 px-1.5 py-0.5 rounded">22.96%</span>
                   </div>
                   <p class="text-[11px] text-slate-400">Qué deja más plata, después de la comisión de la letra</p>
                 </button>
               </div>
+
+              <p id="lecap-curve" class="text-[11px] leading-relaxed text-slate-500">Letras: esperando cotización.</p>
 
               <!-- Opción en DÓLARES -->
               <div id="usd-instruments" class="hidden p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30">
@@ -916,6 +918,7 @@
   <script src="config.js"></script>
   <script src="cheque-discount.js"></script>
   <script src="caucion-buckets.js"></script>
+  <script src="lecap-yields.js"></script>
   <script src="macro-vs-letra.js"></script>
   <script src="simulator.js"></script>
 </body>

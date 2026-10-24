@@ -10,8 +10,10 @@ let currentPlazo = 7;
 let liquidityPlazo = 7;
 let chequePlazoDays = 90;
 let macroLetraPlazoDays = 38;
+let macroPlazoFollowsVto = true;
 let macroTnaDirty = false;
 let letraTnaDirty = false;
+let lecapQuoteMeta = null;
 let liveMacroBands = null;
 let activeTNA = 21.5;
 
@@ -100,7 +102,7 @@ async function fetchLiveRates(force = false) {
   const icon = document.getElementById('refresh-icon');
   if (icon) icon.classList.add('animate-spin');
 
-  const cacheKey = 'zeta_market_rates_cache';
+  const cacheKey = 'zeta_market_rates_cache_v2';
   const ttlMs = (ZETA_CONFIG.ratesConfig?.refreshIntervalMinutes || 30) * 60 * 1000;
 
   // 1. Revisar si hay datos en caché válidos por menos de 30 minutos
@@ -111,10 +113,10 @@ async function fetchLiveRates(force = false) {
         const parsed = JSON.parse(cached);
         const age = Date.now() - parsed.timestamp;
         // Si el caché tiene tasas viejas o tickers vencidos (ej. S28F5 de 2025), descartarlo
-        if (parsed.rates && (parsed.rates.lecapTNA > 35 || parsed.rates.lecapDetails?.ticker === 'S28F5')) {
+        if (!parsed.meta || !parsed.meta.lecapSource || parsed.rates?.lecapDetails?.ticker === 'S28F5') {
           localStorage.removeItem(cacheKey);
         } else if (age < ttlMs && parsed.rates) {
-          applyFetchedRates(parsed.rates, new Date(parsed.timestamp), 'cache');
+          applyFetchedRates(parsed.rates, new Date(parsed.timestamp), 'cache', parsed.meta);
           if (icon) icon.classList.remove('animate-spin');
           return;
         }
@@ -135,8 +137,9 @@ async function fetchLiveRates(force = false) {
     if (res.ok) {
       const json = await res.json();
       if (json.rates) {
-        applyFetchedRates(json.rates, new Date(), 'api');
-        saveRatesToCache(json.rates);
+        const meta = lecapMetaFromPayload(json);
+        applyFetchedRates(json.rates, json.timestamp ? new Date(json.timestamp) : new Date(), 'api', meta);
+        saveRatesToCache(json.rates, meta);
         success = true;
       }
     }
@@ -147,8 +150,12 @@ async function fetchLiveRates(force = false) {
   }
 
   if (!success) {
-    // Si no hubo conexión o el mercado está cerrado, se usan las tasas base de config.js
-    updateRatesStatusUI(new Date(), 'fallback');
+    // Si no hubo conexión, siguen las tasas base de config.js.
+    updateRatesStatusUI(new Date(), 'fallback', {
+      lecapSource: 'config',
+      lecapSourceLabel: 'config',
+      marketOpen: false
+    });
   }
 
   if (icon) {
@@ -229,11 +236,25 @@ async function fetchDirectArgentinaDatos() {
       console.info('[Zeta Finance] Sin tramos de Macro en vivo:', macroError.message);
     }
 
+    const lecapPayload = await fetchDirectLecapCurve();
+    if (lecapPayload) {
+      ZETA_CONFIG.marketRates.lecapTNA = lecapPayload.rates.lecapTNA;
+      ZETA_CONFIG.marketRates.lecapDetails = lecapPayload.rates.lecapDetails;
+      ZETA_CONFIG.marketRates.lecaps = lecapPayload.rates.lecaps;
+      updated = true;
+    }
+
     if (updated) {
       const payload = { ...ZETA_CONFIG.marketRates };
       if (macroBands) payload.macroPlazoFijoBands = macroBands;
-      applyFetchedRates(payload, new Date(), 'direct');
-      saveRatesToCache(payload);
+      if (lecapPayload) {
+        payload.lecapTNA = lecapPayload.rates.lecapTNA;
+        payload.lecapDetails = lecapPayload.rates.lecapDetails;
+        payload.lecaps = lecapPayload.rates.lecaps;
+      }
+      const meta = lecapPayload ? lecapPayload.meta : { lecapSource: 'config', lecapSourceLabel: 'config', marketOpen: false };
+      applyFetchedRates(payload, new Date(), 'direct', meta);
+      saveRatesToCache(payload, meta);
       return true;
     }
   } catch (e) {
@@ -242,18 +263,86 @@ async function fetchDirectArgentinaDatos() {
   return false;
 }
 
-function applyFetchedRates(newRates, timestamp, origin) {
+function lecapMetaFromPayload(json) {
+  const lecap = (json && json.lecap) || {};
+  const source = lecap.source || (json && json.rates && json.rates.lecapDetails && json.rates.lecapDetails.fuente) || 'config';
+  return {
+    lecapSource: source,
+    lecapSourceLabel: lecap.sourceLabel || (source === 'data912' ? 'Data912' : source === 'byma' ? 'BYMA' : 'config'),
+    marketOpen: !!lecap.marketOpen,
+    sourcesChecked: (json && json.sourcesChecked) || []
+  };
+}
+
+async function fetchDirectLecapCurve() {
+  if (typeof buildLecapCurve !== 'function' || typeof lecapDetailsFromReference !== 'function') return null;
+  try {
+    const headers = { 'Accept': 'application/json' };
+    const notesPromise = fetch(ZETA_CONFIG.ratesConfig?.directLecapUrl || 'https://data912.com/live/arg_notes', {
+      headers,
+      signal: AbortSignal.timeout(4000)
+    });
+    const bymaPromise = fetch(ZETA_CONFIG.ratesConfig?.bymaLecapUrl || 'https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/lebacs', {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ page_size: 700 }),
+      signal: AbortSignal.timeout(5000)
+    }).catch(() => null);
+
+    const notesRes = await notesPromise;
+    const bymaRes = await bymaPromise;
+    const data912Rows = notesRes && notesRes.ok ? await notesRes.json() : [];
+    let bymaRows = [];
+    if (bymaRes && bymaRes.ok) {
+      const body = await bymaRes.json();
+      bymaRows = Array.isArray(body) ? body : (body && body.data) || [];
+    }
+    const curve = buildLecapCurve({
+      now: new Date(),
+      data912Rows: Array.isArray(data912Rows) ? data912Rows : [],
+      bymaRows,
+      fichas: {}
+    });
+    if (!curve) return null;
+    return {
+      rates: {
+        lecapTNA: curve.reference.tna,
+        lecapDetails: lecapDetailsFromReference(curve.reference),
+        lecaps: curve.letters
+      },
+      meta: {
+        lecapSource: curve.source,
+        lecapSourceLabel: curve.sourceLabel,
+        marketOpen: curve.marketOpen
+      }
+    };
+  } catch (error) {
+    console.info('[Zeta Finance] LECAP directa no disponible:', error.message);
+    return null;
+  }
+}
+
+function applyFetchedRates(newRates, timestamp, origin, meta) {
   if (newRates.caucionByDays) {
     ZETA_CONFIG.marketRates.caucionByDays = { ...ZETA_CONFIG.marketRates.caucionByDays, ...newRates.caucionByDays };
   }
   if (newRates.plazoFijoTNA) ZETA_CONFIG.marketRates.plazoFijoTNA = newRates.plazoFijoTNA;
   if (newRates.lecapTNA) ZETA_CONFIG.marketRates.lecapTNA = newRates.lecapTNA;
-  if (newRates.lecapDetails) {
-    // Merge: el scrapeo de Rava no trae días al vencimiento y no debe pisar el de config.
+  if (newRates.lecapDetails && newRates.lecapDetails.ticker && newRates.lecapDetails.diasAlVencimiento) {
+    ZETA_CONFIG.marketRates.lecapDetails = { ...newRates.lecapDetails };
+  } else if (newRates.lecapDetails) {
     ZETA_CONFIG.marketRates.lecapDetails = {
       ...(ZETA_CONFIG.marketRates.lecapDetails || {}),
       ...newRates.lecapDetails
     };
+  }
+  if (Array.isArray(newRates.lecaps)) {
+    ZETA_CONFIG.marketRates.lecaps = newRates.lecaps;
+  }
+  const letterDays = Number(ZETA_CONFIG.marketRates.lecapDetails && ZETA_CONFIG.marketRates.lecapDetails.diasAlVencimiento);
+  if (macroPlazoFollowsVto && isFinite(letterDays) && letterDays >= 1) {
+    macroLetraPlazoDays = Math.round(letterDays);
+    if (isMacroLetraMode()) currentPlazo = macroLetraPlazoDays;
   }
   if (Array.isArray(newRates.macroPlazoFijoBands) && newRates.macroPlazoFijoBands.length) {
     liveMacroBands = newRates.macroPlazoFijoBands;
@@ -267,36 +356,46 @@ function applyFetchedRates(newRates, timestamp, origin) {
     calculateYield();
   }
 
-  updateRatesStatusUI(timestamp, origin);
+  if (meta) lecapQuoteMeta = meta;
+  updateRatesStatusUI(timestamp, origin, meta || lecapQuoteMeta);
 }
 
-function saveRatesToCache(rates) {
+function saveRatesToCache(rates, meta) {
   try {
-    localStorage.setItem('zeta_market_rates_cache', JSON.stringify({
+    localStorage.setItem('zeta_market_rates_cache_v2', JSON.stringify({
       timestamp: Date.now(),
-      rates
+      rates,
+      meta: meta || lecapQuoteMeta
     }));
   } catch (e) {}
 }
 
-function updateRatesStatusUI(date, origin) {
+function updateRatesStatusUI(date, origin, meta) {
   const dot = document.getElementById('rate-status-dot');
   const text = document.getElementById('rate-status-text');
   const lastUpdate = document.getElementById('rate-last-update');
   if (!dot || !text || !lastUpdate) return;
 
-  const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const timeStr = date.toLocaleTimeString('es-AR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    timeZone: 'America/Argentina/Buenos_Aires'
+  });
+  const source = meta && meta.lecapSource;
+  const label = (meta && meta.lecapSourceLabel) || 'config';
+  const live = (source === 'data912' || source === 'byma') && origin !== 'fallback';
 
-  if (origin === 'api' || origin === 'direct' || origin === 'cache') {
+  if (live) {
     dot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse";
-    text.textContent = "Tasas en vivo sincronizadas";
+    text.textContent = meta && meta.marketOpen ? "LECAP en vivo" : "LECAP último cierre";
     text.className = "font-medium text-emerald-300";
-    lastUpdate.textContent = `Actualizado: ${timeStr} hs`;
+    lastUpdate.textContent = `${label} · ${timeStr} hs`;
   } else {
     dot.className = "w-2.5 h-2.5 rounded-full bg-amber-400";
-    text.textContent = "Tasas de referencia (mercado cerrado)";
+    text.textContent = "LECAP de referencia";
     text.className = "font-medium text-amber-300";
-    lastUpdate.textContent = `Referencia activa: ${timeStr} hs`;
+    lastUpdate.textContent = `config · ${timeStr} hs`;
   }
 }
 
@@ -628,16 +727,18 @@ function updateCaucionRateForDays(days) {
 
 function updateInstrumentRates() {
   const rates = ZETA_CONFIG.marketRates;
-  document.getElementById('rate-badge-lecap').textContent = `${rates.lecapTNA.toFixed(1)}%`;
+  document.getElementById('rate-badge-lecap').textContent = `${formatLecapTna(rates.lecapTNA)}%`;
   document.getElementById('rate-badge-plazofijo').textContent = `${rates.plazoFijoTNA.toFixed(1)}%`;
 
-  // Actualizar detalles visibles del Ticker de la LECAP activa
   if (rates.lecapDetails) {
     const pill = document.getElementById('lecap-ticker-pill');
     const vto = document.getElementById('lecap-vto-label');
+    const sourceLabel = document.getElementById('lecap-source-label');
     if (pill && rates.lecapDetails.ticker) pill.textContent = rates.lecapDetails.ticker;
     if (vto && rates.lecapDetails.vencimiento) vto.textContent = rates.lecapDetails.vencimiento;
+    if (sourceLabel) sourceLabel.textContent = lecapSourceCaption(rates.lecapDetails);
   }
+  renderLecapCurve();
 
   const curveDays = (selectedInstrument === 'cheques' || selectedInstrument === 'macroLetra')
     ? liquidityPlazo
@@ -647,7 +748,38 @@ function updateInstrumentRates() {
   refreshMacroVtoPill();
 
   const macroBadge = document.getElementById('macro-letra-badge');
-  if (macroBadge) macroBadge.textContent = `${Number(rates.lecapTNA).toFixed(1)}%`;
+  if (macroBadge) macroBadge.textContent = `${formatLecapTna(rates.lecapTNA)}%`;
+}
+
+function formatLecapTna(value) {
+  const n = Number(value);
+  if (!isFinite(n)) return '—';
+  return n.toFixed(2);
+}
+
+function lecapSourceCaption(details) {
+  const source = (lecapQuoteMeta && lecapQuoteMeta.lecapSource) || (details && details.fuente) || 'config';
+  if (source === 'data912') return 'Data912';
+  if (source === 'byma') return 'BYMA';
+  return 'config';
+}
+
+function renderLecapCurve() {
+  const node = document.getElementById('lecap-curve');
+  if (!node) return;
+  const letters = (ZETA_CONFIG.marketRates && ZETA_CONFIG.marketRates.lecaps) || [];
+  if (!letters.length) {
+    node.textContent = 'Letras: sin cotización nueva. Sigue el respaldo de config.';
+    return;
+  }
+  const parts = letters.map((letter) => {
+    const ticker = letter.ticker || 'LECAP';
+    const tna = formatLecapTna(letter.tna);
+    const tea = letter.tea != null ? formatLecapTna(letter.tea) : null;
+    return tea ? `${ticker} TNA ${tna}% · TIR ${tea}%` : `${ticker} TNA ${tna}%`;
+  });
+  const source = lecapSourceCaption(ZETA_CONFIG.marketRates.lecapDetails);
+  node.textContent = `Letras ${source}: ${parts.join('  ·  ')}`;
 }
 
 function updateCaucionPillRates() {
@@ -755,7 +887,7 @@ function setupEventListeners() {
   if (plazoMacro) {
     plazoMacro.addEventListener('input', () => {
       const n = parseInt(plazoMacro.value, 10);
-      if (!isNaN(n)) setPlazo(n);
+      if (!isNaN(n)) setMacroPlazo(n);
     });
   }
 
@@ -800,6 +932,16 @@ function setupEventListeners() {
       if (isMacroLetraMode()) calculateYield();
     });
   }
+}
+
+function setMacroPlazo(days) {
+  macroPlazoFollowsVto = false;
+  setPlazo(days);
+}
+
+function useLetraVto() {
+  macroPlazoFollowsVto = true;
+  setPlazo(letraDaysFromConfig());
 }
 
 function setCapital(amount) {
@@ -944,7 +1086,7 @@ function renderComparisonTable(currentRendimiento) {
   const pfEligible = currentPlazo >= 30;
   const yieldPlazoFijo = Math.round(currentCapital * (rates.plazoFijoTNA / 100) * (currentPlazo / 365));
   const lecapTicker = rates.lecapDetails?.ticker || "S30N6";
-  const lecapVto = rates.lecapDetails?.vencimiento || "30/11";
+  const lecapVto = rates.lecapDetails?.vencimiento || "30/11/2026";
 
   container.innerHTML = `
     <!-- 1. LECAP Corta -->
@@ -956,10 +1098,10 @@ function renderComparisonTable(currentRendimiento) {
         <div>
           <div class="flex items-center gap-1.5">
             <span class="text-xs font-bold text-slate-200">LECAP Corta (${lecapTicker})</span>
-            <span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-400 font-mono font-bold">${rates.lecapTNA}% TNA</span>
+            <span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-400 font-mono font-bold">${formatLecapTna(rates.lecapTNA)}% TNA</span>
             <span class="text-[9px] px-1 py-0.2 rounded bg-emerald-900/60 text-emerald-300">Vto: ${lecapVto}</span>
           </div>
-          <span class="text-[11px] text-slate-400">Título de referencia de mayor liquidez &bull; Mercado secundario</span>
+          <span class="text-[11px] text-slate-400">La más corta que llega a 30 días &bull; ${lecapSourceCaption(rates.lecapDetails)}</span>
         </div>
       </div>
       <span class="font-mono font-bold text-emerald-400 text-sm">+${currPrefix}${formatNumber(yieldLecap)}</span>
