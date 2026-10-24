@@ -12,6 +12,9 @@ const ZETA_CONFIG = {
     apiEndpoint: "/api/rates",   // Endpoint serverless de Vercel
     directCaucionesUrl: "https://api.argentinadatos.com/v1/finanzas/cauciones/ars",
     bymaCaucionesUrl: "https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/cauciones",
+    directLecapUrl: "https://data912.com/live/arg_notes",
+    bymaLecapUrl: "https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/lebacs",
+    bymaFichaUrl: "https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/bnown/fichatecnica/especies/general",
     directPlazoFijoUrl: "https://api.argentinadatos.com/v1/finanzas/tasas/depositos30Dias",
     directMacroPlazoFijoUrl: "https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo"
   },
@@ -31,13 +34,30 @@ const ZETA_CONFIG = {
     },
     defaultCaucionTNA: 21.5,
     plazoFijoTNA: 19.5, // Promedio grandes bancos a 30 días (~19.5% TNA)
-    lecapTNA: 26.5,     // LECAP corta de referencia de mercado (~26.5% TNA)
+    // Respaldo si Data912 y BYMA no traen precio. Cierre del 23/10/2026.
+    // La referencia es S30N6 (35 días): la más corta que llega al mínimo
+    // del plazo fijo. TNA simple 22,96%. La TIR de esa letra es 25,50%.
+    // Paga 129,89 cada 100 nominales el 30/11/2026 (TEM 2,30%).
+    lecapTNA: 22.96,
     lecapDetails: {
-      ticker: "S30N6",                       // Ticker de la letra activa vigente
-      vencimiento: "30/11/2026",              // Fecha de vencimiento (30 de Noviembre)
-      nombre: "LECAP Vencimiento Noviembre 2026",
-      diasAlVencimiento: 38                  // Días remanentes aproximados
+      ticker: "S30N6",
+      vencimiento: "30/11/2026",
+      nombre: "LECAP Vto. 30/11/2026",
+      diasAlVencimiento: 35,
+      precio: 127.09,
+      payoffPor100: 129.89,
+      temPct: 2.30,
+      tna: 22.96,
+      tea: 25.50,
+      tir: 25.50,
+      fuente: "config"
     },
+    lecaps: [
+      { ticker: "S30O6", tna: 19.55, tea: 21.57, tir: 21.57, dias: 4, vencimiento: "30/10/2026", precio: 134.989, payoffPor100: 135.28, fuente: "config" },
+      { ticker: "S13N6", tna: 22.75, tea: 25.38, tir: 25.38, dias: 18, vencimiento: "13/11/2026", precio: 108.435, payoffPor100: 109.65, fuente: "config" },
+      { ticker: "S30N6", tna: 22.96, tea: 25.50, tir: 25.50, dias: 35, vencimiento: "30/11/2026", precio: 127.09, payoffPor100: 129.89, fuente: "config" },
+      { ticker: "S29E7", tna: 24.73, tea: 27.08, tir: 27.08, dias: 95, vencimiento: "29/01/2027", precio: 104.932, payoffPor100: 111.68, fuente: "config" }
+    ],
     usdRateAnnual: 5.0  // Tasa fija en dólares
   },
 

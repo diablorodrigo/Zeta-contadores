@@ -10,7 +10,7 @@ Plataforma corporativa de colocación de liquidez transitoria con control de acc
    - Extrae en vivo:
      - **Cauciones en Pesos:** Tasas BYMA escalonadas (3d, 7d, 10d, 15d, 30d).
      - **Plazo Fijo:** Tasa promedio oficial informada al BCRA.
-     - **LECAP Corta:** Extrae la **TIR** de la letra con vencimiento más cercano y mayor volumen negociado en el mercado secundario.
+     - **LECAP Corta:** Precio de Data912 (`/live/arg_notes`) y, si falta esa especie, BYMA (`/free/lebacs`). Calcula TNA, TEA y TIR con el payoff capitalizado. La de referencia es la más corta que llega a 30 días.
      - **Colocación USD:** Tasa corporativa fija al 5.0% anual.
    - **Cache de 30 minutos:** Cabezal `Cache-Control: s-maxage=1800` para que Vercel sirva las tasas desde la red Edge sin sobrecargar las fuentes de datos.
 
@@ -18,8 +18,8 @@ Plataforma corporativa de colocación de liquidez transitoria con control de acc
    - **Auto-refresco:** Un temporizador actualiza las tasas automáticamente cada 30 minutos sin necesidad de recargar la página.
    - **Caché Local (`localStorage`):** Guarda la última consulta para evitar peticiones repetidas al navegar.
    - **Indicador Visual en Vivo:**
-     - `🟢 Tasas en vivo sincronizadas • Actualizado: HH:MM hs`
-     - `🟡 Tasas de referencia (mercado cerrado)` (con fallback seguro en [`config.js`](file:///C:/Users/crist/.gemini/antigravity/scratch/zeta-landing/config.js)).
+     - `🟢 LECAP en vivo` o `🟢 LECAP último cierre`, con la fuente (Data912 o BYMA) y la hora de Argentina.
+     - `🟡 LECAP de referencia` cuando queda el respaldo de [`config.js`](file:///C:/Users/crist/.gemini/antigravity/scratch/zeta-landing/config.js).
    - **Botón manual `↻ Actualizar`:** Para que el asesor fuerce la sincronización en cualquier momento si está en una reunión con un cliente.
 
 ---
@@ -27,7 +27,7 @@ Plataforma corporativa de colocación de liquidez transitoria con control de acc
 ## 📈 Alternativas de Inversión Configuradas (Régimen Actual de Mercado)
 
 - **Caución Bursátil:** Escalonada en ~20.5% a ~23.5% TNA (3d: 20.5%, 7d: 21.5%, 10d: 22.0%, 15d: 22.5%, 30d: 23.5%). Respaldo BYMA y liquidación T+0.
-- **LECAP Corta:** Tasa de mayor rendimiento en pesos en torno al **~26.5% TNA** (TIR de mercado secundario).
+- **LECAP Corta:** La más corta que llega a 30 días, para poder compararla con un plazo fijo. El respaldo escrito es **S30N6 al 22,96% TNA** (cierre 23/10/2026; TIR 25,50%; paga 129,89 cada 100 nominales). En vivo la pisa `/api/rates`.
 - **Plazo Fijo Tradicional:** **~19.5% TNA** (promedio grandes bancos BNA / Galicia / Santander, inmovilizado a 30 días).
 - **Dólares (USD):** Toggle de moneda en el encabezado con colocación fija al 5.0% anual.
 - **Descuento de cheques:** compara un banco contra la propuesta Zeta. Las tasas no salen del refresco de mercado; se editan en `config.js` (ver abajo).
@@ -68,7 +68,7 @@ En `config.js`, bloque `macroVsLetra`:
 - `letra.aplicaIva`: `false`. El IVA 21% se puede prender en la reunión.
 - `letra.derechosPct`: 0. La membresía mensual no entra en la cuenta.
 
-La TNA bruta de la letra es `marketRates.lecapTNA` (y el ticker / días de `lecapDetails`). En la reunión se pueden pisar la TNA de Macro, la TNA bruta, la comisión, el IVA y los derechos. No se guardan.
+La TNA bruta de la letra es `marketRates.lecapTNA` (y el ticker / días de `lecapDetails`). Es la TNA simple a 365 días, no la TIR. En la reunión se pueden pisar la TNA de Macro, la TNA bruta, la comisión, el IVA y los derechos. No se guardan.
 
 El plazo arranca en los días al vencimiento de la letra. Bajo 30 días el plazo fijo figura N/A.
 
@@ -81,6 +81,14 @@ Fórmulas en `macro-vs-letra.js`. El lead manda `instrument: "macro_vs_letra"`.
 `/api/rates` toma primero BYMA (`POST https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/cauciones`, body `{}`, filas `denominationCcy === "ARS"`). La TNA es `trade`, si no `vwap`, si no el promedio de bid y offer (vienen en decimal: 0,212 = 21,2%). Esos días se meten en los baldes 3 / 7 / 10 / 15 / 30 si caen a lo sumo a 3 días del balde.
 
 ArgentinaDatos `/cauciones/ars` queda de respaldo: muchas veces responde `[]` (snapshot de IOL vacío), incluso con el mercado abierto. Si las dos fuentes fallan, siguen los valores de `marketRates.caucionByDays` en `config.js`. El instrumento Caución usa la TNA del plazo elegido. En los atajos de días se ve la TNA de cada balde.
+
+## LECAP en vivo
+
+`/api/rates` pide el precio a Data912 (`GET https://data912.com/live/arg_notes`, cache de unos 30 segundos, sin clave). Si una letra no viene ahí, usa BYMA (`POST .../free/lebacs`, liquidación 24 hs). Las dos se consultan desde la función: el browser no depende de CORS.
+
+El payoff no es 100. Cada letra capitaliza su TEM con base 30/360 (`100 * (1 + TEM) ^ (días / 30)`). La TEM sale de la ficha BYMA. Si la ficha no trae el número, se usa la de licitación ya contrastada con el flujo publicado (S13N6 2,10% paga 109,65; S29E7 2,25% paga 111,68; S30O6 2,55% paga 135,28; S30N6 2,30% paga 129,89). Sin TEM conocida esa especie no entra.
+
+TNA = `(payoff / precio - 1) * 365 / días`. TEA y TIR (un solo pago) = `(payoff / precio) ^ (365 / días) - 1`. Los días corren desde la liquidación 24 hs. La letra que entra en la comparación es la más corta con al menos 30 días; el resto de la curva se muestra abajo. La barra dice la fuente y la hora. Si Data912 y BYMA fallan, queda `marketRates.lecapTNA` en `config.js`. El refresco sigue cada 30 minutos. Las tasas de cheques no se modifican.
 
 ---
 
