@@ -6,7 +6,10 @@ const {
   buildLecapCurve,
   quoteCalendar,
   mergeLecapPrices,
-  parseTemPct
+  parseTemPct,
+  pickLecapForPlazo,
+  tradableLecaps,
+  LECAP_CONFIG_FALLBACK
 } = require('./lecap-yields.js');
 
 const FRIDAY_CLOSE = new Date('2026-10-24T15:30:00.000Z');
@@ -178,6 +181,69 @@ test('bajo 30 días no se usa como referencia si hay una letra que llega al plaz
     fichas: {}
   });
   assert.equal(nearest.reference.ticker, 'S30O6');
+});
+
+const MENU_TODAY = '2026-10-26';
+
+const MENU_LETTERS = [
+  { ticker: 'S30O6', maturity: '2026-10-30', tna: 19.55, dias: 4 },
+  { ticker: 'S13N6', maturity: '2026-11-13', tna: 22.75, dias: 18 },
+  { ticker: 'S30N6', maturity: '2026-11-30', tna: 22.96, dias: 35 },
+  { ticker: 'S29E7', maturity: '2027-01-29', tna: 24.73, dias: 95 },
+  { ticker: 'S31L5', maturity: '2026-10-25', vencimiento: '25/10/2026', tna: 40, dias: 12 }
+];
+
+test('plazo corto de 15 días elige la letra más cercana y no una fija', () => {
+  const pick = pickLecapForPlazo(MENU_LETTERS, 15, { today: MENU_TODAY });
+  assert.equal(pick.today, MENU_TODAY);
+  assert.equal(pick.letter.ticker, 'S13N6');
+  assert.equal(pick.letter.diasHoy, 18);
+  assert.equal(pick.gapDays, 3);
+  assert.equal(pick.fit, true);
+  assert.equal(pick.reason, 'calza');
+  assert.ok(pick.menu.every((letter) => letter.ticker !== 'S31L5'));
+  assert.equal(pick.menu.length, 4);
+});
+
+test('plazo de 60 días ofrece la más cercana pero no la da por calce', () => {
+  const pick = pickLecapForPlazo(MENU_LETTERS, 60, { today: MENU_TODAY });
+  assert.equal(pick.letter.ticker, 'S30N6');
+  assert.equal(pick.letter.diasHoy, 35);
+  assert.equal(pick.gapDays, -25);
+  assert.equal(pick.absGap, 25);
+  assert.equal(pick.fit, false);
+  assert.equal(pick.reason, 'lejos');
+  assert.equal(pick.maxGapDays, 15);
+});
+
+test('un plazo mayor a la última letra no se compara como si esa letra lo cubriera', () => {
+  const pick = pickLecapForPlazo(MENU_LETTERS, 200, { today: MENU_TODAY });
+  assert.equal(pick.letter.ticker, 'S29E7');
+  assert.equal(pick.letter.diasHoy, 95);
+  assert.equal(pick.gapDays, -105);
+  assert.equal(pick.fit, false);
+  assert.equal(pick.reason, 'lejos');
+});
+
+test('una letra ya vencida se descarta aunque el respaldo le deje días positivos', () => {
+  const menu = tradableLecaps(LECAP_CONFIG_FALLBACK, '2026-11-01');
+  assert.ok(menu.every((letter) => letter.ticker !== 'S30O6'));
+  assert.equal(menu[0].ticker, 'S13N6');
+  assert.equal(menu[0].diasHoy, 12);
+
+  const pick = pickLecapForPlazo(MENU_LETTERS, 10, { today: MENU_TODAY, ticker: 'S31L5' });
+  assert.equal(pick.manual, false);
+  assert.notEqual(pick.letter.ticker, 'S31L5');
+  assert.equal(pick.letter.ticker, 'S30O6');
+  assert.equal(pick.letter.diasHoy, 4);
+
+  const curve = buildLecapCurve({
+    now: new Date('2026-11-02T15:00:00.000Z'),
+    data912Rows: DATA912_FRIDAY,
+    bymaRows: [],
+    fichas: {}
+  });
+  assert.ok(curve.letters.every((letter) => letter.ticker !== 'S30O6'));
 });
 
 test('si las dos fuentes vienen vacías no se inventa una curva', () => {

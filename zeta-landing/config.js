@@ -4,7 +4,9 @@
 const ZETA_CONFIG = {
   platformName: "Zeta Finance",
   adminWhatsapp: "5493496462977", // Teléfono de Zeta Finance (formato internacional sin +)
-  googleSheetWebhookUrl: "https://script.google.com/macros/s/AKfycby0gRVsJhZb7O47pdyYmzlCitexqvoVINYcXoUhd9oz4wLLzplihfc_h7wXtCTRssPI/exec", // URL de Google Apps Script para sincronización de leads
+  // El Sheet de estudios y de leads lo llama el servidor (/api/pin y /api/lead).
+  // No va la URL ni la lista de PIN en el navegador. Ver README, "Acceso".
+  googleSheetWebhookUrl: "",
 
   // Sincronización automática de tasas de mercado
   ratesConfig: {
@@ -42,6 +44,7 @@ const ZETA_CONFIG = {
     lecapTNA: 22.96,
     lecapDetails: {
       ticker: "S30N6",
+      maturity: "2026-11-30",
       vencimiento: "30/11/2026",
       nombre: "LECAP Vto. 30/11/2026",
       diasAlVencimiento: 35,
@@ -54,10 +57,10 @@ const ZETA_CONFIG = {
       fuente: "config"
     },
     lecaps: [
-      { ticker: "S30O6", tna: 19.55, tea: 21.57, tir: 21.57, dias: 4, vencimiento: "30/10/2026", precio: 134.989, payoffPor100: 135.28, fuente: "config" },
-      { ticker: "S13N6", tna: 22.75, tea: 25.38, tir: 25.38, dias: 18, vencimiento: "13/11/2026", precio: 108.435, payoffPor100: 109.65, fuente: "config" },
-      { ticker: "S30N6", tna: 22.96, tea: 25.50, tir: 25.50, dias: 35, vencimiento: "30/11/2026", precio: 127.09, payoffPor100: 129.89, fuente: "config" },
-      { ticker: "S29E7", tna: 24.73, tea: 27.08, tir: 27.08, dias: 95, vencimiento: "29/01/2027", precio: 104.932, payoffPor100: 111.68, fuente: "config" }
+      { ticker: "S30O6", tna: 19.55, tea: 21.57, tir: 21.57, dias: 4, maturity: "2026-10-30", vencimiento: "30/10/2026", precio: 134.989, payoffPor100: 135.28, fuente: "config" },
+      { ticker: "S13N6", tna: 22.75, tea: 25.38, tir: 25.38, dias: 18, maturity: "2026-11-13", vencimiento: "13/11/2026", precio: 108.435, payoffPor100: 109.65, fuente: "config" },
+      { ticker: "S30N6", tna: 22.96, tea: 25.50, tir: 25.50, dias: 35, maturity: "2026-11-30", vencimiento: "30/11/2026", precio: 127.09, payoffPor100: 129.89, fuente: "config" },
+      { ticker: "S29E7", tna: 24.73, tea: 27.08, tir: 27.08, dias: 95, maturity: "2027-01-29", vencimiento: "29/01/2027", precio: 104.932, payoffPor100: 111.68, fuente: "config" }
     ],
     usdRateAnnual: 5.0, // Tasa fija en dólares
     // Respaldo del FCI de liquidez. Cuotaparte de Balanz Capital Money Market
@@ -154,6 +157,8 @@ const ZETA_CONFIG = {
   macroVsLetra: {
     bankLabel: "Banco Macro",
     minDias: 30,
+    // La letra calza si el vencimiento queda a lo sumo a estos días del plazo.
+    maxGapDays: 15,
     bands: [
       { montoMin: 1, montoMax: 4999999.99, plazoMin: 30, plazoMax: 35, tna: 19.5 },
       { montoMin: 5000000, montoMax: null, plazoMin: 30, plazoMax: 35, tna: 20 },
@@ -181,37 +186,7 @@ const ZETA_CONFIG = {
     }
   },
 
-  // Listado de Estudios Aliados y sus PINs
-  studios: {
-    "4829": {
-      id: "estudio-perez",
-      name: "Estudio Pérez & Asociados",
-      subtitle: "Asesoramiento Contable & Financiero PyME",
-      city: "Salta, Argentina",
-      primaryColor: "#1e3a8a",
-      accentColor: "#2563eb",
-      hideZetaBranding: false,
-      customWhatsappNote: "Canal preferencial Estudio Pérez"
-    },
-    "1042": {
-      id: "estudio-gomez",
-      name: "Gómez & Consultores",
-      subtitle: "Auditoría y Gestión Tributaria",
-      city: "Córdoba, Argentina",
-      primaryColor: "#065f46",
-      accentColor: "#059669",
-      hideZetaBranding: false,
-      customWhatsappNote: "Derivado por Gómez & Consultores"
-    },
-    "9999": {
-      id: "zeta-demo",
-      name: "Zeta Finance Partner Demo",
-      subtitle: "Entorno de Demostración para Contadores",
-      city: "Argentina",
-      primaryColor: "#0f172a",
-      accentColor: "#6366f1",
-      hideZetaBranding: false,
-      customWhatsappNote: "Demo comercial"
-    }
-  }
+  // Los estudios habilitados salen del Google Sheet, vía /api/pin.
+  // El navegador no guarda PIN ni la ficha de otros estudios.
+  studios: {}
 };

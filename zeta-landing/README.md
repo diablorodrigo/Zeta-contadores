@@ -66,9 +66,9 @@ En `config.js`, bloque `macroVsLetra`:
 - `bands`: tramos de ejemplo (monto × días → TNA). El de 30 días hasta $5 M está en 19,5%. Si `/api/rates` trae `macroPlazoFijoBands` desde ArgentinaDatos, pisan estos presets hasta que el contador edite la TNA.
 - La comisión, el IVA y los derechos salen de `brokerCosts` (Balanz, editable). La letra descuenta una sola compra, con IVA, y el derecho BYMA de letras. La membresía mensual no entra.
 
-La TNA bruta de la letra es `marketRates.lecapTNA` (y el ticker / días de `lecapDetails`). Es la TNA simple a 365 días, no la TIR. La comparación contra Macro usa la TNA neta. En la reunión se pueden pisar la TNA de Macro, la TNA bruta, la comisión, el IVA y los derechos. No se guardan. El FCI de liquidez entra en la misma comparación.
+La comparación no queda atada a una sola letra. Con el plazo pedido, el simulador elige la letra vigente cuyo vencimiento cae más cerca. Los días corren de hoy al vencimiento real de cada especie, no de un valor fijo. Si dos quedan a la misma distancia, queda la que no se pasa del plazo. Calza si la diferencia es de hasta `macroVsLetra.maxGapDays` (15). Si no calza, no se la compara como si fuera ese plazo: aparece el aviso y la más cercana, con los días de diferencia. Se puede elegir otra a mano. La TNA bruta es la de esa letra. La neta descuenta la comisión de Balanz, el IVA y los derechos BYMA. En la reunión se pueden pisar la TNA de Macro, la TNA bruta, la comisión, el IVA y los derechos. No se guardan. El FCI de liquidez entra cuando la letra calza.
 
-El plazo arranca en los días al vencimiento de la letra. Bajo 30 días el plazo fijo figura N/A.
+El plazo arranca en los días de hoy al vencimiento de la letra de referencia (la más corta que llega a 30 días de liquidación). Bajo 30 días el plazo fijo figura N/A. Una letra ya vencida no entra, tampoco si el respaldo de `config.js` todavía le deja un `dias` viejo.
 
 Fórmulas en `macro-vs-letra.js`. El lead manda `instrument: "macro_vs_letra"`.
 
@@ -86,7 +86,7 @@ ArgentinaDatos `/cauciones/ars` queda de respaldo: muchas veces responde `[]` (s
 
 El payoff no es 100. Cada letra capitaliza su TEM con base 30/360 (`100 * (1 + TEM) ^ (días / 30)`). La TEM sale de la ficha BYMA. Si la ficha no trae el número, se usa la de licitación ya contrastada con el flujo publicado (S13N6 2,10% paga 109,65; S29E7 2,25% paga 111,68; S30O6 2,55% paga 135,28; S30N6 2,30% paga 129,89). Sin TEM conocida esa especie no entra.
 
-TNA = `(payoff / precio - 1) * 365 / días`. TEA y TIR (un solo pago) = `(payoff / precio) ^ (365 / días) - 1`. Los días corren desde la liquidación 24 hs. La letra que entra en la comparación es la más corta con al menos 30 días; el resto de la curva se muestra abajo. La barra dice la fuente y la hora. Si Data912 y BYMA fallan, queda `marketRates.lecapTNA` en `config.js`. El refresco sigue cada 30 minutos. Las tasas de cheques no se modifican.
+TNA = `(payoff / precio - 1) * 365 / días`. TEA y TIR (un solo pago) = `(payoff / precio) ^ (365 / días) - 1`. Los días de la TNA corren desde la liquidación 24 hs. Los días que usa el comparador corren de hoy al vencimiento. La letra de referencia de la tarjeta LECAP sigue siendo la más corta con al menos 30 días de liquidación. La comparación contra el plazo fijo elige otra si el plazo pedido calza mejor con otra especie. La curva vigente se muestra abajo. La barra dice la fuente y la hora. Si Data912 y BYMA fallan, queda el respaldo de `lecap-yields.js` / `config.js`, con fecha de vencimiento, y se descarta la que ya venció. El refresco sigue cada 30 minutos. Las tasas de cheques no se modifican.
 
 ## Comisiones, impuesto al cheque y FCI
 
@@ -98,14 +98,24 @@ El FCI es Balanz Capital Money Market, clase A, pesos, rescate T+0. `/api/rates`
 
 ---
 
+## Acceso de estudios
+
+La pantalla de entrada no muestra PIN de ejemplo. El navegador tampoco trae la lista: manda el código a `GET /api/pin` y el servidor lo contrasta con el Google Sheet (`action=getStudios`). La respuesta es solo la ficha del estudio que coincide. Los prospectos salen por `POST /api/lead`.
+
+En Vercel (o en el entorno), variables:
+
+- `GOOGLE_SHEET_WEBHOOK_URL`: URL del Apps Script, solo en el servidor.
+- `STUDIO_SHEET_TOKEN`: secreto que el servidor agrega al pedido. Hoy el script no lo exige.
+
+Si `GOOGLE_SHEET_WEBHOOK_URL` no está definida, el servidor usa la URL de Apps Script que ya estaba en el proyecto (`studio-access.js`). Alcanza para que el acceso y los leads sigan andando, pero no es un secreto: quien tenga esa URL puede pedir `getStudios` y ver la lista. Falta, y no se puede cerrar desde este repo:
+
+1. Cargar `GOOGLE_SHEET_WEBHOOK_URL` en Vercel y borrar el respaldo de `studio-access.js`.
+2. Hacer que el Apps Script rechace `getStudios` si no llega `STUDIO_SHEET_TOKEN` (el mismo valor, solo en el servidor).
+3. Mejor todavía: una acción `checkPin` que no devuelva el mapa completo. `/api/pin` ya está listo para mandar el token; el script todavía responde el mapa.
+
 ## 🛠️ Cómo Probar Localmente
 
-Abre el archivo [**`index.html`**](file:///C:/Users/crist/.gemini/antigravity/scratch/zeta-landing/index.html) en tu navegador.
-
-### PINs de acceso para pruebas:
-- `4829` &rarr; **Estudio Pérez & Asociados** (Salta)
-- `1042` &rarr; **Gómez & Consultores** (Córdoba)
-- `9999` &rarr; **Zeta Finance Demo**
+Serví la carpeta `zeta-landing` con las funciones de `api/` (en Vercel eso es automático). Abrir el HTML suelto no valida el PIN, porque `/api/pin` no existe en `file://`.
 
 ---
 
