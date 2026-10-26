@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="theme.css">
   <title>Simulador de Tesorería PyME | Plataforma Corporativa</title>
   
   <!-- Google Fonts: Inter -->
@@ -38,10 +40,18 @@
       width: 22px;
       height: 22px;
       border-radius: 50%;
-      background: #2563eb;
+      background: var(--range-thumb, #2563eb);
       cursor: pointer;
       box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-      border: 3px solid white;
+      border: 3px solid var(--range-thumb-ring, #ffffff);
+    }
+    input[type=range]::-moz-range-thumb {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--range-thumb, #2563eb);
+      cursor: pointer;
+      border: 3px solid var(--range-thumb-ring, #ffffff);
     }
   </style>
 </head>
@@ -51,6 +61,10 @@
   <!-- 1. PANTALLA DE ACCESO POR PIN (GATEKEEPER) -->
   <!-- ========================================== -->
   <div id="gatekeeper-screen" class="min-h-screen flex items-center justify-center p-4 bg-slate-950 relative overflow-hidden">
+    <button type="button" class="theme-toggle theme-toggle-floating" data-theme-toggle onclick="toggleTheme()" aria-label="Activar modo claro" title="Modo claro">
+      <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></svg>
+      <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg>
+    </button>
     <div class="absolute -top-40 -left-40 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl pointer-events-none"></div>
     <div class="absolute -bottom-40 -right-40 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none"></div>
 
@@ -109,13 +123,13 @@
     <!-- BARRA SUPERIOR DINÁMICA -->
     <header class="sticky top-0 z-40 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 transition-colors">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-        <div class="flex items-center gap-4">
-          <div id="studio-avatar" class="w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg text-white shadow-md border border-white/10 transition-colors">
+        <div class="flex items-center gap-4 min-w-0">
+          <div id="studio-avatar" class="w-12 h-12 shrink-0 rounded-xl flex items-center justify-center font-bold text-lg text-white shadow-md border border-white/10 transition-colors">
             EP
           </div>
-          <div>
-            <div class="flex items-center gap-2">
-              <h2 id="studio-title" class="font-bold text-lg text-white tracking-tight">Estudio Pérez & Asociados</h2>
+          <div class="min-w-0">
+            <div class="flex items-center gap-2 min-w-0">
+              <h2 id="studio-title" class="font-bold text-lg text-white tracking-tight truncate">Estudio Pérez & Asociados</h2>
               <span id="studio-badge" class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
                 Partner Exclusivo
               </span>
@@ -129,6 +143,10 @@
             <span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
             Operado por <strong>Zeta Finance</strong>
           </div>
+          <button type="button" class="theme-toggle" data-theme-toggle onclick="toggleTheme()" aria-label="Activar modo claro" title="Modo claro">
+            <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></svg>
+            <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg>
+          </button>
           <button onclick="lockScreen()" title="Cerrar sesión" class="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl border border-slate-700 text-xs flex items-center gap-2 transition">
             <i data-lucide="log-out" class="w-4 h-4"></i>
             <span class="hidden md:inline">Cerrar Sesión</span>

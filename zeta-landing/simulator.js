@@ -567,8 +567,14 @@ function applyStudioBranding(studio) {
     .join('');
   
   const avatarEl = document.getElementById('studio-avatar');
+  const primary = studio.primaryColor || '#1e3a8a';
+  const accent = studio.accentColor || '#2563eb';
   avatarEl.textContent = initials || 'EP';
-  avatarEl.style.backgroundColor = studio.primaryColor || '#1e3a8a';
+  avatarEl.style.backgroundColor = primary;
+  avatarEl.style.color = typeof zetaReadableOn === 'function' ? zetaReadableOn(primary) : '#ffffff';
+  avatarEl.style.borderColor = accent;
+  document.documentElement.style.setProperty('--studio-accent', accent);
+  document.documentElement.style.setProperty('--studio-primary', primary);
 
   const partnerTag = document.getElementById('zeta-partner-tag');
   const footerSignature = document.getElementById('footer-zeta-signature');
