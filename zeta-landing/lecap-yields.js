@@ -107,7 +107,9 @@ var LECAP_CONFIG_FALLBACK = [
 // Diferencia máxima, en días corridos, para tratar el calce como comparable.
 var LECAP_MAX_GAP_DAYS = 15;
 
-var LECAP_PICK_CRITERION = 'Criterio: entre las letras que todavía no vencieron, se elige la de vencimiento más cercano al plazo pedido. Los días corren de hoy al vencimiento real. Si dos quedan a la misma distancia, queda la que no se pasa del plazo. Calza si la diferencia es de hasta 15 días. Si no calza, no se compara contra esa letra como si fuera el plazo pedido.';
+var LECAP_PICK_CRITERION = 'Modo por plazo: entre las letras que todavía no vencieron, se elige la de vencimiento más cercano a los días pedidos. Los días corren de hoy al vencimiento real. Si dos quedan a la misma distancia, queda la que no se pasa. Calza si la diferencia es de hasta 15 días. Si no calza, no se compara contra esa letra como si fuera el plazo pedido.';
+
+var LECAP_LETTER_MODE = 'Modo por letra: el plazo es la cantidad de días de hoy al vencimiento de la letra elegida. La TNA neta, los costos y el plazo fijo usan esos días.';
 
 function lecapFinite(value) {
   var n = Number(value);
@@ -557,6 +559,72 @@ function pickLecapForPlazo(letters, plazoDays, options) {
   };
 }
 
+function defaultLecapLetter(menu) {
+  var rows = menu || [];
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i].diasHoy >= 30) return rows[i];
+  }
+  return rows[0] || null;
+}
+
+/**
+ * Dos modos. "letra": el plazo es diasHoy de la especie elegida.
+ * "plazo": el usuario escribió días y se busca la más cercana.
+ * Una letra vencida no se puede elegir.
+ */
+function resolveLecapHorizon(letters, options) {
+  var opts = options || {};
+  var mode = opts.mode === 'plazo' ? 'plazo' : 'letra';
+  var maxGap = lecapFinite(opts.maxGapDays);
+  if (maxGap == null || maxGap < 0) maxGap = LECAP_MAX_GAP_DAYS;
+  if (mode === 'plazo') {
+    var pick = pickLecapForPlazo(letters, opts.plazoDays, opts);
+    pick.mode = 'plazo';
+    return pick;
+  }
+
+  var today = lecapTodayIso(opts.today || new Date());
+  var menu = tradableLecaps(letters, today);
+  var ticker = String(opts.ticker || '').toUpperCase();
+  var letter = null;
+  if (ticker) {
+    for (var i = 0; i < menu.length; i++) {
+      if (menu[i].ticker === ticker) letter = menu[i];
+    }
+  }
+  if (!letter) letter = defaultLecapLetter(menu);
+  if (!letter) {
+    return {
+      mode: 'letra',
+      menu: menu,
+      letter: null,
+      plazo: null,
+      gapDays: null,
+      absGap: null,
+      fit: false,
+      manual: false,
+      maxGapDays: maxGap,
+      reason: 'sin-letras',
+      criterion: LECAP_LETTER_MODE,
+      today: today
+    };
+  }
+  return {
+    mode: 'letra',
+    menu: menu,
+    letter: letter,
+    plazo: letter.diasHoy,
+    gapDays: 0,
+    absGap: 0,
+    fit: true,
+    manual: false,
+    maxGapDays: maxGap,
+    reason: 'por-letra',
+    criterion: LECAP_LETTER_MODE,
+    today: today
+  };
+}
+
 function lecapDetailsFromReference(reference) {
   return {
     ticker: reference.ticker,
@@ -581,6 +649,7 @@ if (typeof module !== 'undefined' && module.exports) {
     LECAP_CONFIG_FALLBACK: LECAP_CONFIG_FALLBACK,
     LECAP_MAX_GAP_DAYS: LECAP_MAX_GAP_DAYS,
     LECAP_PICK_CRITERION: LECAP_PICK_CRITERION,
+    LECAP_LETTER_MODE: LECAP_LETTER_MODE,
     LECAP_SOURCE_LABEL: LECAP_SOURCE_LABEL,
     isLecapTicker: isLecapTicker,
     quoteCalendar: quoteCalendar,
@@ -593,6 +662,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildLecapCurve: buildLecapCurve,
     tradableLecaps: tradableLecaps,
     pickLecapForPlazo: pickLecapForPlazo,
+    resolveLecapHorizon: resolveLecapHorizon,
     lecapDetailsFromReference: lecapDetailsFromReference,
     formatVencimiento: formatVencimiento
   };

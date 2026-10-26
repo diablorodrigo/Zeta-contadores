@@ -10,10 +10,13 @@ let currentPlazo = 7;
 let liquidityPlazo = 7;
 let chequePlazoDays = 90;
 let macroLetraPlazoDays = 38;
+let lecapPlazoDays = null;
 let macroPlazoFollowsVto = true;
 let macroTnaDirty = false;
 let letraTnaDirty = false;
 let manualLecapTicker = null;
+let lecapMode = 'letra';
+let selectedLecapTicker = null;
 let lecapQuoteMeta = null;
 let liveMacroBands = null;
 let activeTNA = 21.5;
@@ -26,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   setupPinBoxes();
   macroLetraPlazoDays = letraDaysFromConfig();
+  lecapPlazoDays = macroLetraPlazoDays;
   setupEventListeners();
   initChequeControls();
   initMacroLetraControls();
@@ -328,10 +332,19 @@ function applyFetchedRates(newRates, timestamp, origin, meta) {
       ...newRates.fciDetails
     };
   }
-  const letterDays = letraDaysFromConfig();
-  if (macroPlazoFollowsVto && isFinite(letterDays) && letterDays >= 1) {
-    macroLetraPlazoDays = Math.round(letterDays);
-    if (isMacroLetraMode()) currentPlazo = macroLetraPlazoDays;
+  if (lecapMode === 'letra') {
+    const horizon = currentLecapPick();
+    if (horizon.letter) {
+      selectedLecapTicker = horizon.letter.ticker;
+      macroLetraPlazoDays = horizon.plazo;
+      if (isMacroLetraMode() || selectedInstrument === 'lecap') currentPlazo = horizon.plazo;
+    }
+  } else {
+    const letterDays = letraDaysFromConfig();
+    if (macroPlazoFollowsVto && isFinite(letterDays) && letterDays >= 1) {
+      macroLetraPlazoDays = Math.round(letterDays);
+      if (isMacroLetraMode()) currentPlazo = macroLetraPlazoDays;
+    }
   }
   if (Array.isArray(newRates.macroPlazoFijoBands) && newRates.macroPlazoFijoBands.length) {
     liveMacroBands = newRates.macroPlazoFijoBands;
@@ -658,12 +671,14 @@ function renderQuickCapitalButtons() {
 function rememberPlazo(inst) {
   if (inst === 'cheques') chequePlazoDays = currentPlazo;
   else if (inst === 'macroLetra') macroLetraPlazoDays = currentPlazo;
+  else if (inst === 'lecap') lecapPlazoDays = currentPlazo;
   else if (currentCurrency === 'ARS') liquidityPlazo = currentPlazo;
 }
 
 function plazoForInstrument(inst) {
   if (inst === 'cheques') return chequePlazoDays;
   if (inst === 'macroLetra') return macroLetraPlazoDays;
+  if (inst === 'lecap') return lecapPlazoDays || letraDaysFromConfig();
   return liquidityPlazo;
 }
 
@@ -677,8 +692,15 @@ function selectInstrument(inst) {
 
   if (inst === 'caucion') {
     updateCaucionRateForDays(currentPlazo);
-  } else if (inst === 'lecap') {
-    activeTNA = ZETA_CONFIG.marketRates.lecapTNA;
+  } else if (inst === 'lecap' || (inst === 'macroLetra' && lecapMode === 'letra')) {
+    const horizon = currentLecapPick();
+    if (inst === 'lecap') {
+      activeTNA = horizon.letter ? Number(horizon.letter.tna) : ZETA_CONFIG.marketRates.lecapTNA;
+    }
+    if (lecapMode === 'letra' && horizon.letter) {
+      selectedLecapTicker = horizon.letter.ticker;
+      currentPlazo = horizon.plazo;
+    }
   } else if (inst === 'fci') {
     activeTNA = ZETA_CONFIG.marketRates.fciTNA;
   } else if (inst === 'plazofijo') {
@@ -982,13 +1004,18 @@ function setupEventListeners() {
 }
 
 function setMacroPlazo(days) {
+  lecapMode = 'plazo';
+  selectedLecapTicker = null;
+  manualLecapTicker = null;
   macroPlazoFollowsVto = false;
+  letraTnaDirty = false;
+  const input = document.getElementById('input-plazo-macro');
+  if (input) input.readOnly = false;
   setPlazo(days);
 }
 
 function useLetraVto() {
-  macroPlazoFollowsVto = true;
-  setPlazo(letraDaysFromConfig());
+  setLecapMode('letra');
 }
 
 function setCapital(amount) {
@@ -998,18 +1025,21 @@ function setCapital(amount) {
 }
 
 function setPlazo(days) {
-  const max = isChequeMode() ? 180 : (isMacroLetraMode() ? 365 : 35);
+  const max = isChequeMode() ? 180 : ((isMacroLetraMode() || selectedInstrument === 'lecap') ? 365 : 35);
   let safe = parseInt(days, 10);
   if (!isFinite(safe) || safe < 1) safe = 1;
   if (safe > max) safe = max;
   const changed = safe !== currentPlazo;
   currentPlazo = safe;
-  if (isMacroLetraMode() && changed) {
+  if (!syncingLecapHorizon && (isMacroLetraMode() || selectedInstrument === 'lecap') && lecapMode === 'letra' && changed) {
+    lecapMode = 'plazo';
+    selectedLecapTicker = null;
     manualLecapTicker = null;
     letraTnaDirty = false;
   }
   if (isChequeMode()) chequePlazoDays = safe;
   else if (isMacroLetraMode()) macroLetraPlazoDays = safe;
+  else if (selectedInstrument === 'lecap') lecapPlazoDays = safe;
   else if (currentCurrency === 'ARS') liquidityPlazo = safe;
 
   const slider = document.getElementById('slider-plazo');
@@ -1175,10 +1205,21 @@ function calculateYield() {
   if (gananciaLabel) gananciaLabel.textContent = 'Rendimiento';
 
   const currPrefix = currentCurrency === 'USD' ? 'US$' : '$';
-  const quote = netQuote(selectedInstrument, activeTNA, currentPlazo);
+  let quoteDays = currentPlazo;
+  let quoteTna = activeTNA;
+  if (selectedInstrument === 'lecap') {
+    const horizon = currentLecapPick();
+    if (horizon.letter) {
+      quoteDays = horizon.letter.diasHoy;
+      quoteTna = Number(horizon.letter.tna);
+      activeTNA = quoteTna;
+    }
+    syncLecapHorizonUI(horizon);
+  }
+  const quote = netQuote(selectedInstrument, quoteTna, quoteDays);
   const rendimiento = Math.round(quote.interes);
   const capitalFinal = currentCapital + rendimiento;
-  const rendimientoDiario = currentPlazo > 0 ? Math.round(rendimiento / currentPlazo) : 0;
+  const rendimientoDiario = quoteDays > 0 ? Math.round(rendimiento / quoteDays) : 0;
 
   // Actualizar Tarjeta Principal
   document.getElementById('display-rendimiento').textContent = `+${currPrefix}${formatNumber(rendimiento)}`;
@@ -1257,7 +1298,11 @@ function renderComparisonTable(currentRendimiento) {
   const rates = ZETA_CONFIG.marketRates;
   const tnaCaucion = caucionTnaForDays(currentPlazo);
   const caucionQuote = netQuote('caucion', tnaCaucion, currentPlazo);
-  const lecapQuote = netQuote('lecap', rates.lecapTNA, currentPlazo);
+  const letterHorizon = currentLecapPick();
+  const letter = letterHorizon.letter;
+  const lecapDays = letter ? letter.diasHoy : currentPlazo;
+  const lecapTna = letter ? letter.tna : rates.lecapTNA;
+  const lecapQuote = netQuote('lecap', lecapTna, lecapDays);
   const fciQuote = netQuote('fci', rates.fciTNA, currentPlazo);
   const yieldCaucion = Math.round(caucionQuote.interes);
   const yieldLecap = Math.round(lecapQuote.interes);
@@ -1266,8 +1311,11 @@ function renderComparisonTable(currentRendimiento) {
   // Plazo fijo: requiere min 30 días
   const pfEligible = currentPlazo >= 30;
   const yieldPlazoFijo = Math.round(currentCapital * (rates.plazoFijoTNA / 100) * (currentPlazo / 365));
-  const lecapTicker = rates.lecapDetails?.ticker || "S30N6";
-  const lecapVto = rates.lecapDetails?.vencimiento || "30/11/2026";
+  const lecapTicker = letter ? letter.ticker : (rates.lecapDetails?.ticker || "S30N6");
+  const lecapVto = letter ? (letter.vencimiento || "") : (rates.lecapDetails?.vencimiento || "30/11/2026");
+  const lecapDayNote = lecapDays === currentPlazo
+    ? `${lecapDays} días`
+    : `${lecapDays} días hasta el vencimiento`;
 
   container.innerHTML = `
     <!-- 1. LECAP Corta -->
@@ -1282,7 +1330,7 @@ function renderComparisonTable(currentRendimiento) {
             <span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-400 font-mono font-bold">${formatLecapTna(lecapQuote.tnaNeta)}% neta</span>
             <span class="text-[9px] px-1 py-0.2 rounded bg-emerald-900/60 text-emerald-300">Vto: ${lecapVto}</span>
           </div>
-          <span class="text-[11px] text-slate-400">Bruta ${formatLecapTna(rates.lecapTNA)}% · compra única, sin venta &bull; ${lecapSourceCaption(rates.lecapDetails)}</span>
+          <span class="text-[11px] text-slate-400">Bruta ${formatLecapTna(lecapTna)}% · ${lecapDayNote} · compra única, sin venta</span>
         </div>
       </div>
       <span class="font-mono font-bold text-emerald-400 text-sm">+${currPrefix}${formatNumber(yieldLecap)}</span>
@@ -1380,6 +1428,7 @@ function isMacroLetraMode() {
 function syncChequeMode() {
   const cheque = isChequeMode();
   const macro = isMacroLetraMode();
+  const lecapInst = currentCurrency === 'ARS' && selectedInstrument === 'lecap';
   const single = !cheque && !macro;
   const toggle = (id, show) => {
     const el = document.getElementById(id);
@@ -1394,6 +1443,7 @@ function syncChequeMode() {
   toggle('macro-rate-overrides', macro);
   toggle('macro-plazo-direct', macro);
   toggle('plazo-pills-macro', macro);
+  toggle('lecap-horizon-mode', macro || lecapInst);
   toggle('macro-comparison-card', macro);
   toggle('macro-result-stack', macro);
   toggle('plazo-pills-liquidity', single);
@@ -1413,7 +1463,9 @@ function syncChequeMode() {
   } else if (macro) {
     if (capitalLabel) capitalLabel.textContent = 'Capital a colocar';
     if (capitalHint) capitalHint.textContent = 'El tramo de Macro depende del monto';
-    if (plazoLabel) plazoLabel.textContent = 'Plazo a comparar (días)';
+    if (plazoLabel) plazoLabel.textContent = lecapMode === 'letra' ? 'Días hasta el vencimiento de la letra' : 'Plazo libre (días)';
+  } else if (lecapInst) {
+    if (plazoLabel) plazoLabel.textContent = lecapMode === 'letra' ? 'Días hasta el vencimiento de la letra' : 'Plazo libre (días)';
   } else if (currentCurrency === 'ARS') {
     if (capitalLabel) capitalLabel.textContent = 'Capital a Rentabilizar';
     if (capitalHint) capitalHint.textContent = 'Mínimo sugerido: $500.000 ARS';
@@ -1426,7 +1478,7 @@ function syncChequeMode() {
 
   const slider = document.getElementById('slider-plazo');
   if (slider) {
-    slider.max = cheque ? '180' : (macro ? '365' : '35');
+    slider.max = cheque ? '180' : ((macro || lecapInst) ? '365' : '35');
     slider.classList.toggle('accent-violet-500', cheque);
     slider.classList.toggle('accent-sky-500', macro);
     slider.classList.toggle('accent-blue-500', !cheque && !macro);
@@ -1692,8 +1744,19 @@ function letraDaysFromConfig() {
 function currentLecapPick() {
   const source = (ZETA_CONFIG.marketRates && ZETA_CONFIG.marketRates.lecaps) || [];
   const configured = Number(ZETA_CONFIG.macroVsLetra && ZETA_CONFIG.macroVsLetra.maxGapDays);
+  const maxGapDays = isFinite(configured) && configured >= 0 ? configured : undefined;
+  if (typeof resolveLecapHorizon === 'function') {
+    return resolveLecapHorizon(source, {
+      mode: lecapMode,
+      ticker: lecapMode === 'letra' ? (selectedLecapTicker || manualLecapTicker) : manualLecapTicker,
+      plazoDays: currentPlazo,
+      today: new Date(),
+      maxGapDays
+    });
+  }
   if (typeof pickLecapForPlazo !== 'function') {
     return {
+      mode: lecapMode,
       menu: [],
       letter: null,
       fit: false,
@@ -1706,11 +1769,13 @@ function currentLecapPick() {
       today: ''
     };
   }
-  return pickLecapForPlazo(source, currentPlazo, {
+  const pick = pickLecapForPlazo(source, currentPlazo, {
     today: new Date(),
-    maxGapDays: isFinite(configured) && configured >= 0 ? configured : undefined,
+    maxGapDays,
     ticker: manualLecapTicker
   });
+  pick.mode = 'plazo';
+  return pick;
 }
 
 function shortVencimiento(value) {
@@ -1729,13 +1794,17 @@ function gapPhrase(letter, plazo) {
 }
 
 function formatLetraElegida(pick) {
-  if (!pick.letter) return 'No hay una letra vigente para este plazo.';
+  if (!pick.letter) return 'No hay una letra vigente.';
   const vto = shortVencimiento(pick.letter.vencimiento || pick.letter.maturity);
+  if (pick.mode === 'letra') {
+    return `Modo por letra: ${pick.letter.ticker}, vence ${vto}, ${pick.letter.diasHoy} días`;
+  }
   const modo = pick.manual ? 'Letra elegida a mano' : 'Letra elegida';
-  return `${modo}: ${pick.letter.ticker}, vence ${vto}, ${pick.letter.diasHoy} días`;
+  return `Modo por plazo. ${modo}: ${pick.letter.ticker}, vence ${vto}, ${pick.letter.diasHoy} días`;
 }
 
 function formatLetraWarning(pick) {
+  if (pick.mode === 'letra') return '';
   if (!pick.letter) {
     return 'No quedó ninguna letra vigente. Las ya vencidas se descartan.';
   }
@@ -1745,20 +1814,99 @@ function formatLetraWarning(pick) {
     return `La elegiste a mano: ${pick.letter.ticker} vence ${vto}, ${pick.letter.diasHoy} días, ${cuanto}. La cuenta usa ese vencimiento, no los ${pick.plazo} días tipeados.`;
   }
   if (pick.fit) return '';
-  return `Ninguna letra calza con ${pick.plazo} días (la tolerancia es ${pick.maxGapDays}). La más cercana es ${pick.letter.ticker}: vence ${vto}, ${pick.letter.diasHoy} días, ${cuanto}. No se la compara como si fuera un plazo de ${pick.plazo} días. Podés elegirla y la cuenta usa esos ${pick.letter.diasHoy} días.`;
+  return `Ninguna letra calza con ${pick.plazo} días (la tolerancia es ${pick.maxGapDays}). La más cercana es ${pick.letter.ticker}: vence ${vto}, ${pick.letter.diasHoy} días, ${cuanto}. No se la compara como si fuera un plazo de ${pick.plazo} días. Elegila y el plazo pasa a ser ese vencimiento.`;
+}
+
+let syncingLecapHorizon = false;
+
+function selectLecapLetra(ticker) {
+  lecapMode = 'letra';
+  selectedLecapTicker = String(ticker || '').toUpperCase();
+  manualLecapTicker = null;
+  letraTnaDirty = false;
+  macroPlazoFollowsVto = false;
+  const horizon = currentLecapPick();
+  if (!horizon.letter) {
+    calculateYield();
+    return;
+  }
+  selectedLecapTicker = horizon.letter.ticker;
+  if (selectedInstrument === 'lecap') activeTNA = Number(horizon.letter.tna);
+  syncingLecapHorizon = true;
+  setPlazo(horizon.plazo);
+  syncingLecapHorizon = false;
 }
 
 function selectMacroLetra(ticker) {
-  manualLecapTicker = String(ticker || '').toUpperCase();
-  macroPlazoFollowsVto = false;
-  letraTnaDirty = false;
-  if (isMacroLetraMode()) calculateYield();
+  selectLecapLetra(ticker);
+}
+
+function setLecapMode(mode) {
+  if (mode === 'plazo') {
+    lecapMode = 'plazo';
+    selectedLecapTicker = null;
+    manualLecapTicker = null;
+    macroPlazoFollowsVto = false;
+    const input = document.getElementById('input-plazo-macro');
+    if (input) {
+      input.readOnly = false;
+      input.focus();
+    }
+    calculateYield();
+    return;
+  }
+  selectLecapLetra(selectedLecapTicker);
 }
 
 function clearMacroLetraManual() {
   manualLecapTicker = null;
   letraTnaDirty = false;
-  if (isMacroLetraMode()) calculateYield();
+  if (lecapMode === 'letra') setLecapMode('letra');
+  else calculateYield();
+}
+
+function syncLecapHorizonUI(pick) {
+  const horizon = pick || currentLecapPick();
+  const porLetra = horizon.mode !== 'plazo';
+  const input = document.getElementById('input-plazo-macro');
+  const macroLabel = document.getElementById('label-plazo-macro');
+  if (input) input.readOnly = porLetra;
+  if (macroLabel) macroLabel.textContent = porLetra ? 'Días hasta el vencimiento' : 'Plazo libre (días)';
+  const slider = document.getElementById('slider-plazo');
+  const lockSlider = porLetra && (isMacroLetraMode() || selectedInstrument === 'lecap');
+  if (slider) slider.disabled = lockSlider;
+  const letraBtn = document.getElementById('btn-mode-letra');
+  const plazoBtn = document.getElementById('btn-mode-plazo');
+  const on = 'px-3 py-1.5 rounded-lg text-xs font-semibold border border-sky-500 bg-sky-500/15 text-sky-100';
+  const off = 'px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-700 bg-slate-800 text-slate-300';
+  if (letraBtn) letraBtn.className = porLetra ? on : off;
+  if (plazoBtn) plazoBtn.className = porLetra ? off : on;
+  const note = document.getElementById('lecap-horizon-note');
+  if (note) {
+    if (!horizon.letter) {
+      note.textContent = 'No hay letras vigentes.';
+    } else if (porLetra) {
+      note.textContent = `Modo por letra. El plazo es el vencimiento de ${horizon.letter.ticker}: ${horizon.letter.diasHoy} días.`;
+    } else if (horizon.fit) {
+      note.textContent = `Modo por plazo. ${horizon.letter.ticker} calza con ${horizon.plazo} días (vence en ${horizon.letter.diasHoy}).`;
+    } else {
+      note.textContent = `Modo por plazo. ${horizon.letter.ticker} no calza: vence en ${horizon.letter.diasHoy} días, a ${horizon.absGap} del plazo pedido.`;
+    }
+  }
+  const plazoLabel = document.getElementById('label-plazo');
+  if (plazoLabel && (isMacroLetraMode() || selectedInstrument === 'lecap')) {
+    plazoLabel.textContent = porLetra ? 'Días hasta el vencimiento de la letra' : 'Plazo libre (días)';
+  }
+  const chips = document.getElementById('lecap-letter-chips');
+  if (!chips) return;
+  chips.innerHTML = (horizon.menu || []).map((letter) => {
+    const active = horizon.letter && letter.ticker === horizon.letter.ticker;
+    const vto = shortVencimiento(letter.vencimiento || letter.maturity);
+    const cls = active
+      ? 'border-sky-500 bg-sky-500/15 text-white'
+      : 'border-slate-700 bg-slate-900 text-slate-300';
+    return `<button type="button" data-letra="${escapeHtml(letter.ticker)}" onclick="selectLecapLetra('${escapeHtml(letter.ticker)}')" class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border ${cls}">${escapeHtml(letter.ticker)} · ${escapeHtml(vto)} · ${letter.diasHoy}d</button>`;
+  }).join('');
 }
 
 function getMacroBands() {
@@ -1884,7 +2032,7 @@ function getMacroLetraScenario() {
   const bankLabel = typedLabel || cfg.bankLabel;
   const pick = currentLecapPick();
   const chosen = pick.letter;
-  const comparable = !!(chosen && (pick.fit || pick.manual));
+  const comparable = pick.mode === 'letra' ? !!chosen : !!(chosen && (pick.fit || pick.manual));
   const letraDays = chosen ? chosen.diasHoy : 0;
   const bankDays = comparable ? letraDays : currentPlazo;
   const band = syncMacroReferenceInputs(bankDays, chosen);
@@ -1971,6 +2119,7 @@ function renderMacroLetraExperience() {
   if (breakeven) breakeven.textContent = macroBreakEvenText(scenario);
 
   renderMacroLetraMenu(scenario);
+  syncLecapHorizonUI(scenario.pick);
 
   const note = document.getElementById('macro-comparison-note');
   if (note) {
@@ -2139,7 +2288,7 @@ function renderMacroLetraMenu(scenario) {
       <td class="py-1.5 pr-3 font-mono text-slate-200">${formatPercentPoints(net.tnaNeta)}</td>
       <td class="py-1.5 text-right">
         <button type="button" data-letra="${escapeHtml(letter.ticker)}" onclick="selectMacroLetra('${escapeHtml(letter.ticker)}')" class="text-[10px] font-semibold ${selected ? 'text-sky-300' : 'text-slate-400 hover:text-white'}">
-          ${selected ? (pick.manual ? 'Elegida' : 'Automática') : 'Elegir'}
+          ${selected ? (pick.mode === 'letra' ? 'Elegida' : 'Más cercana') : 'Elegir'}
         </button>
       </td>
     </tr>`;

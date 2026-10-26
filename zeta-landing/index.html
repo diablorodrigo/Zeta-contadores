@@ -293,6 +293,14 @@
                 </button>
               </div>
               </div>
+              <div id="lecap-horizon-mode" class="hidden mt-3 space-y-2">
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" id="btn-mode-letra" onclick="setLecapMode('letra')" class="px-3 py-1.5 rounded-lg text-xs font-semibold border border-sky-500 bg-sky-500/15 text-sky-100">Por letra</button>
+                  <button type="button" id="btn-mode-plazo" onclick="setLecapMode('plazo')" class="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-700 bg-slate-800 text-slate-300">Por plazo</button>
+                </div>
+                <p id="lecap-horizon-note" class="text-[11px] leading-relaxed text-slate-400">Modo por letra: el plazo sale del vencimiento.</p>
+                <div id="lecap-letter-chips" class="flex flex-wrap gap-2"></div>
+              </div>
               <div id="plazo-pills-macro" class="hidden">
               <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 mt-3">
                 <button type="button" onclick="setMacroPlazo(15)" class="plazo-pill p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-center border border-slate-700 transition" data-days="15">
@@ -318,7 +326,7 @@
               </div>
               </div>
               <div id="macro-plazo-direct" class="hidden mt-3">
-                <label for="input-plazo-macro" class="block text-xs font-semibold text-slate-400 mb-1.5">Plazo a comparar (días)</label>
+                <label for="input-plazo-macro" id="label-plazo-macro" class="block text-xs font-semibold text-slate-400 mb-1.5">Días hasta el vencimiento</label>
                 <input
                   id="input-plazo-macro"
                   type="number"

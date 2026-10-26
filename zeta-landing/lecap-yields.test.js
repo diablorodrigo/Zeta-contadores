@@ -8,6 +8,7 @@ const {
   mergeLecapPrices,
   parseTemPct,
   pickLecapForPlazo,
+  resolveLecapHorizon,
   tradableLecaps,
   LECAP_CONFIG_FALLBACK
 } = require('./lecap-yields.js');
@@ -244,6 +245,62 @@ test('una letra ya vencida se descarta aunque el respaldo le deje días positivo
     fichas: {}
   });
   assert.ok(curve.letters.every((letter) => letter.ticker !== 'S30O6'));
+});
+
+test('modo por letra fija el plazo en los días reales al vencimiento', () => {
+  const cases = [
+    ['S13N6', 18],
+    ['S30N6', 35],
+    ['S29E7', 95]
+  ];
+  cases.forEach(([ticker, days]) => {
+    const horizon = resolveLecapHorizon(MENU_LETTERS, {
+      mode: 'letra',
+      ticker,
+      today: MENU_TODAY,
+      plazoDays: 7
+    });
+    assert.equal(horizon.mode, 'letra');
+    assert.equal(horizon.letter.ticker, ticker);
+    assert.equal(horizon.letter.diasHoy, days);
+    assert.equal(horizon.plazo, days);
+    assert.equal(horizon.fit, true);
+    assert.equal(horizon.reason, 'por-letra');
+  });
+});
+
+test('modo por plazo sigue eligiendo la más cercana y marca cuando no calza', () => {
+  const sixty = resolveLecapHorizon(MENU_LETTERS, {
+    mode: 'plazo',
+    plazoDays: 60,
+    today: MENU_TODAY
+  });
+  assert.equal(sixty.mode, 'plazo');
+  assert.equal(sixty.letter.ticker, 'S30N6');
+  assert.equal(sixty.plazo, 60);
+  assert.equal(sixty.letter.diasHoy, 35);
+  assert.equal(sixty.fit, false);
+
+  const exact = resolveLecapHorizon(MENU_LETTERS, {
+    mode: 'plazo',
+    plazoDays: 35,
+    today: MENU_TODAY
+  });
+  assert.equal(exact.letter.ticker, 'S30N6');
+  assert.equal(exact.fit, true);
+  assert.equal(exact.plazo, exact.letter.diasHoy);
+});
+
+test('modo por letra descarta una vencida y usa los días de la que queda', () => {
+  const horizon = resolveLecapHorizon(MENU_LETTERS, {
+    mode: 'letra',
+    ticker: 'S31L5',
+    today: MENU_TODAY
+  });
+  assert.notEqual(horizon.letter.ticker, 'S31L5');
+  assert.equal(horizon.plazo, horizon.letter.diasHoy);
+  assert.ok(horizon.plazo >= 1);
+  assert.equal(horizon.letter.ticker, 'S30N6');
 });
 
 test('si las dos fuentes vienen vacías no se inventa una curva', () => {
