@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "devDependencies": {
+    "@babel/core": "7.24.4",
+    "@babel/plugin-transform-modules-commonjs": "7.24.1",
+    "@vercel/nft": "1.10.0"
+  }
+}

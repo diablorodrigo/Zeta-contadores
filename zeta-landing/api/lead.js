@@ -3,10 +3,9 @@
  * Reenvía el prospecto al Apps Script. El navegador no necesita la URL.
  */
 
-import { createRequire } from 'module';
-
-const require = createRequire(import.meta.url);
-const { sheetWebhookUrl } = require('../studio-access.js');
+// Import estático: el createRequire(import.meta.url) se rompe cuando
+// Vercel baja este archivo a CommonJS. Ver api/server-functions.test.mjs.
+import { sheetWebhookUrl } from '../studio-access.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');

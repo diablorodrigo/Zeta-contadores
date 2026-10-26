@@ -24,16 +24,16 @@
  * Cache: 30 minutos (1800 segundos).
  */
 
-import { createRequire } from 'module';
-
-const require = createRequire(import.meta.url);
-const {
+// Import estático a propósito. Vercel compila estas funciones a CommonJS
+// y un require armado con import.meta no sobrevive esa compilación: Node
+// aborta al cargar el archivo (HTTP 500 FUNCTION_INVOCATION_FAILED).
+import {
   bucketCaucionQuotes,
   quotesFromBymaRows,
   quotesFromArgentinaDatosRows
-} = require('../caucion-buckets.js');
-const { macroBandsFromArgentinaDatos } = require('../macro-vs-letra.js');
-const {
+} from '../caucion-buckets.js';
+import { macroBandsFromArgentinaDatos } from '../macro-vs-letra.js';
+import {
   LECAP_VERIFIED_TERMS,
   LECAP_CONFIG_FALLBACK,
   buildLecapCurve,
@@ -41,8 +41,8 @@ const {
   mergeLecapPrices,
   quoteCalendar,
   tradableLecaps
-} = require('../lecap-yields.js');
-const { tnaFromCuotapartes } = require('../broker-costs.js');
+} from '../lecap-yields.js';
+import { tnaFromCuotapartes } from '../broker-costs.js';
 
 const BYMA_CAUCIONES_URL = 'https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/cauciones';
 const BYMA_LEBACS_URL = 'https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/lebacs';
