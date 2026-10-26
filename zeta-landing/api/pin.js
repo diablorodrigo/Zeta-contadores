@@ -10,12 +10,12 @@
  * studio-access.js). Eso no es un secreto: el script sigue respondiendo
  * getStudios sin token. Para que el PIN deje de ser público falta
  * STUDIO_SHEET_TOKEN y que el Apps Script lo exija. Ver README.
+ *
+ * Import estático a propósito. Vercel compila este archivo a CommonJS y
+ * un require armado con import.meta no sobrevive esa compilación.
  */
 
-import { createRequire } from 'module';
-
-const require = createRequire(import.meta.url);
-const { matchStudioPin, matchStudioQuery, sheetWebhookUrl } = require('../studio-access.js');
+import { matchStudioPin, matchStudioQuery, sheetWebhookUrl } from '../studio-access.js';
 
 async function loadStudios() {
   const webhook = sheetWebhookUrl();
@@ -28,18 +28,40 @@ async function loadStudios() {
   url.searchParams.set('action', 'getStudios');
   const token = process.env.STUDIO_SHEET_TOKEN || '';
   if (token) url.searchParams.set('token', token);
-  const upstream = await fetch(url, {
-    headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(8000),
-    redirect: 'follow'
-  });
+  let upstream;
+  try {
+    upstream = await fetch(url, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(8000),
+      redirect: 'follow'
+    });
+  } catch (cause) {
+    const error = new Error('sheet');
+    error.code = 'sheet';
+    error.cause = cause;
+    throw error;
+  }
   if (!upstream.ok) {
     const error = new Error('sheet');
     error.code = 'sheet';
     throw error;
   }
-  const body = await upstream.json();
-  return body && body.studios ? body.studios : null;
+  const raw = await upstream.text();
+  let body;
+  try {
+    body = JSON.parse(raw);
+  } catch (cause) {
+    const error = new Error('sheet');
+    error.code = 'sheet';
+    error.cause = cause;
+    throw error;
+  }
+  if (!body || typeof body !== 'object' || !body.studios || typeof body.studios !== 'object') {
+    const error = new Error('sheet');
+    error.code = 'sheet';
+    throw error;
+  }
+  return body.studios;
 }
 
 export default async function handler(req, res) {
