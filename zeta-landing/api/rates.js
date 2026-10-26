@@ -35,10 +35,12 @@ const {
 const { macroBandsFromArgentinaDatos } = require('../macro-vs-letra.js');
 const {
   LECAP_VERIFIED_TERMS,
+  LECAP_CONFIG_FALLBACK,
   buildLecapCurve,
   lecapDetailsFromReference,
   mergeLecapPrices,
-  quoteCalendar
+  quoteCalendar,
+  tradableLecaps
 } = require('../lecap-yields.js');
 const { tnaFromCuotapartes } = require('../broker-costs.js');
 
@@ -71,6 +73,7 @@ export default async function handler(req, res) {
     lecapTNA: 22.96,
     lecapDetails: {
       ticker: "S30N6",
+      maturity: "2026-11-30",
       vencimiento: "30/11/2026",
       nombre: "LECAP Vto. 30/11/2026",
       diasAlVencimiento: 35,
@@ -251,25 +254,23 @@ async function fetchJson(url, timeoutMs) {
 function applyLecapCurve(liveRates, curve, sourcesChecked) {
   if (!curve || !curve.reference) {
     const calendar = quoteCalendar(new Date());
-    const details = liveRates.lecapDetails || {};
-    liveRates.lecaps = [{
-      ticker: details.ticker,
-      tna: liveRates.lecapTNA,
-      tea: details.tea,
-      tir: details.tir,
-      dias: details.diasAlVencimiento,
-      vencimiento: details.vencimiento,
-      precio: details.precio,
-      payoffPor100: details.payoffPor100,
-      fuente: 'config'
-    }];
+    const menu = tradableLecaps(LECAP_CONFIG_FALLBACK, new Date());
+    liveRates.lecaps = menu;
+    const reference = menu.find((letter) => letter.diasHoy >= 30) || menu[0] || null;
+    if (reference) {
+      liveRates.lecapTNA = reference.tna;
+      liveRates.lecapDetails = lecapDetailsFromReference({
+        ...reference,
+        dias: reference.diasHoy
+      });
+    }
     return {
       source: 'config',
       sourceLabel: 'config',
       marketOpen: calendar.marketOpen,
       tradeDate: calendar.tradeDate,
       settlement: calendar.settlement,
-      reference: null
+      reference: reference
     };
   }
   liveRates.lecapTNA = curve.reference.tna;

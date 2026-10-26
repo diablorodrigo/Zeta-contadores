@@ -10,9 +10,13 @@ let currentPlazo = 7;
 let liquidityPlazo = 7;
 let chequePlazoDays = 90;
 let macroLetraPlazoDays = 38;
+let lecapPlazoDays = null;
 let macroPlazoFollowsVto = true;
 let macroTnaDirty = false;
 let letraTnaDirty = false;
+let manualLecapTicker = null;
+let lecapMode = 'letra';
+let selectedLecapTicker = null;
 let lecapQuoteMeta = null;
 let liveMacroBands = null;
 let activeTNA = 21.5;
@@ -23,12 +27,9 @@ document.addEventListener('DOMContentLoaded', () => {
     lucide.createIcons();
   }
 
-  // Cargar estudios dinámicos desde Google Sheets (con caché local)
-  loadStudiosFromCache();
-  fetchStudiosFromGoogleSheets();
-
   setupPinBoxes();
   macroLetraPlazoDays = letraDaysFromConfig();
+  lecapPlazoDays = macroLetraPlazoDays;
   setupEventListeners();
   initChequeControls();
   initMacroLetraControls();
@@ -43,46 +44,8 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /* ==========================================================
-   0. GESTIÓN DINÁMICA DE ESTUDIOS DESDE GOOGLE SHEETS
+   0. ACCESO: EL PIN SE VALIDA EN /api/pin, NO EN EL NAVEGADOR
 ========================================================== */
-
-function loadStudiosFromCache() {
-  try {
-    const cached = localStorage.getItem('zeta_studios_cache');
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      if (parsed && typeof parsed === 'object') {
-        ZETA_CONFIG.studios = { ...ZETA_CONFIG.studios, ...parsed };
-      }
-    }
-  } catch (e) {
-    console.warn('[Zeta Finance] Error leyendo caché de estudios:', e);
-  }
-}
-
-async function fetchStudiosFromGoogleSheets() {
-  if (!ZETA_CONFIG.googleSheetWebhookUrl) return;
-
-  try {
-    const url = `${ZETA_CONFIG.googleSheetWebhookUrl}?action=getStudios&t=${Date.now()}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
-
-    if (res.ok) {
-      const json = await res.json();
-      if (json.success && json.studios && Object.keys(json.studios).length > 0) {
-        // Combinar estudios de Google Sheets con los de respaldo
-        ZETA_CONFIG.studios = { ...ZETA_CONFIG.studios, ...json.studios };
-        localStorage.setItem('zeta_studios_cache', JSON.stringify(json.studios));
-        console.log(`[Zeta Finance] ${Object.keys(json.studios).length} estudios sincronizados desde Google Sheets.`);
-        
-        // Re-verificar URL si vino con parámetro ?pin= o ?estudio=
-        checkUrlParams();
-      }
-    }
-  } catch (err) {
-    console.info('[Zeta Finance] Usando estudios de config.js / caché local (offline o timeout).');
-  }
-}
 
 /* ==========================================================
    0. SINCRONIZACIÓN DE TASAS EN TIEMPO REAL (CADA 30 MIN)
@@ -103,7 +66,7 @@ async function fetchLiveRates(force = false) {
   const icon = document.getElementById('refresh-icon');
   if (icon) icon.classList.add('animate-spin');
 
-  const cacheKey = 'zeta_market_rates_cache_v3';
+  const cacheKey = 'zeta_market_rates_cache_v4';
   const ttlMs = (ZETA_CONFIG.ratesConfig?.refreshIntervalMinutes || 30) * 60 * 1000;
 
   // 1. Revisar si hay datos en caché válidos por menos de 30 minutos
@@ -369,10 +332,19 @@ function applyFetchedRates(newRates, timestamp, origin, meta) {
       ...newRates.fciDetails
     };
   }
-  const letterDays = Number(ZETA_CONFIG.marketRates.lecapDetails && ZETA_CONFIG.marketRates.lecapDetails.diasAlVencimiento);
-  if (macroPlazoFollowsVto && isFinite(letterDays) && letterDays >= 1) {
-    macroLetraPlazoDays = Math.round(letterDays);
-    if (isMacroLetraMode()) currentPlazo = macroLetraPlazoDays;
+  if (lecapMode === 'letra') {
+    const horizon = currentLecapPick();
+    if (horizon.letter) {
+      selectedLecapTicker = horizon.letter.ticker;
+      macroLetraPlazoDays = horizon.plazo;
+      if (isMacroLetraMode() || selectedInstrument === 'lecap') currentPlazo = horizon.plazo;
+    }
+  } else {
+    const letterDays = letraDaysFromConfig();
+    if (macroPlazoFollowsVto && isFinite(letterDays) && letterDays >= 1) {
+      macroLetraPlazoDays = Math.round(letterDays);
+      if (isMacroLetraMode()) currentPlazo = macroLetraPlazoDays;
+    }
   }
   if (Array.isArray(newRates.macroPlazoFijoBands) && newRates.macroPlazoFijoBands.length) {
     liveMacroBands = newRates.macroPlazoFijoBands;
@@ -392,7 +364,7 @@ function applyFetchedRates(newRates, timestamp, origin, meta) {
 
 function saveRatesToCache(rates, meta) {
   try {
-    localStorage.setItem('zeta_market_rates_cache_v2', JSON.stringify({
+    localStorage.setItem('zeta_market_rates_cache_v4', JSON.stringify({
       timestamp: Date.now(),
       rates,
       meta: meta || lecapQuoteMeta
@@ -500,59 +472,58 @@ function fillPin(pin) {
 
 async function validatePin(pin) {
   const errorEl = document.getElementById('pin-error');
-  
-  // 1. Verificar si ya está en memoria / caché
-  if (ZETA_CONFIG.studios && ZETA_CONFIG.studios[pin]) {
-    errorEl.classList.add('hidden');
-    const studio = ZETA_CONFIG.studios[pin];
-    unlockSimulator(studio, pin);
+  const code = String(pin || '').replace(/\D/g, '');
+  if (!/^\d{4}$/.test(code)) {
+    showPinError(errorEl);
     return;
   }
-
-  // 2. Si no está, consultar rápidamente a Google Sheets por si es un PIN recién creado
-  if (ZETA_CONFIG.googleSheetWebhookUrl) {
-    try {
-      const res = await fetch(`${ZETA_CONFIG.googleSheetWebhookUrl}?action=getStudios&t=${Date.now()}`, {
-        signal: AbortSignal.timeout(3000)
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.studios && json.studios[pin]) {
-          ZETA_CONFIG.studios = { ...ZETA_CONFIG.studios, ...json.studios };
-          localStorage.setItem('zeta_studios_cache', JSON.stringify(json.studios));
-          errorEl.classList.add('hidden');
-          unlockSimulator(json.studios[pin], pin);
-          return;
-        }
-      }
-    } catch (e) {}
+  try {
+    const res = await fetch('/api/pin?pin=' + encodeURIComponent(code), {
+      signal: AbortSignal.timeout(8000)
+    });
+    const json = await res.json();
+    if (json && json.ok && json.studio && json.studio.name) {
+      errorEl.classList.add('hidden');
+      unlockSimulator(json.studio, code);
+      return;
+    }
+  } catch (error) {
+    console.info('[Zeta Finance] No se pudo validar el acceso.');
   }
-
-  // 3. Si no existe, mostrar error
-  errorEl.classList.remove('hidden');
-  const pinBoxes = document.getElementById('pin-boxes');
-  pinBoxes.classList.add('animate-bounce');
-  setTimeout(() => pinBoxes.classList.remove('animate-bounce'), 500);
+  showPinError(errorEl);
 }
 
-function checkUrlParams() {
+function showPinError(errorEl) {
+  if (!errorEl) return;
+  errorEl.classList.remove('hidden');
+  const pinBoxes = document.getElementById('pin-boxes');
+  if (pinBoxes) {
+    pinBoxes.classList.add('animate-bounce');
+    setTimeout(() => pinBoxes.classList.remove('animate-bounce'), 500);
+  }
+}
+
+async function checkUrlParams() {
   const urlParams = new URLSearchParams(window.location.search);
   const pinParam = urlParams.get('pin');
   const estudioParam = urlParams.get('estudio');
 
-  if (pinParam && ZETA_CONFIG.studios[pinParam]) {
-    unlockSimulator(ZETA_CONFIG.studios[pinParam], pinParam);
+  if (pinParam) {
+    await validatePin(pinParam);
     return;
   }
 
-  if (estudioParam) {
-    for (const [pin, studio] of Object.entries(ZETA_CONFIG.studios)) {
-      if (studio.id.toLowerCase() === estudioParam.toLowerCase() || 
-          studio.name.toLowerCase().includes(estudioParam.toLowerCase())) {
-        unlockSimulator(studio, pin);
-        return;
-      }
+  if (!estudioParam) return;
+  try {
+    const res = await fetch('/api/pin?estudio=' + encodeURIComponent(estudioParam), {
+      signal: AbortSignal.timeout(8000)
+    });
+    const json = await res.json();
+    if (json && json.ok && json.studio && json.studio.name) {
+      unlockSimulator(json.studio, '');
     }
+  } catch (error) {
+    console.info('[Zeta Finance] No se pudo abrir el estudio de la URL.');
   }
 }
 
@@ -700,12 +671,14 @@ function renderQuickCapitalButtons() {
 function rememberPlazo(inst) {
   if (inst === 'cheques') chequePlazoDays = currentPlazo;
   else if (inst === 'macroLetra') macroLetraPlazoDays = currentPlazo;
+  else if (inst === 'lecap') lecapPlazoDays = currentPlazo;
   else if (currentCurrency === 'ARS') liquidityPlazo = currentPlazo;
 }
 
 function plazoForInstrument(inst) {
   if (inst === 'cheques') return chequePlazoDays;
   if (inst === 'macroLetra') return macroLetraPlazoDays;
+  if (inst === 'lecap') return lecapPlazoDays || letraDaysFromConfig();
   return liquidityPlazo;
 }
 
@@ -719,8 +692,15 @@ function selectInstrument(inst) {
 
   if (inst === 'caucion') {
     updateCaucionRateForDays(currentPlazo);
-  } else if (inst === 'lecap') {
-    activeTNA = ZETA_CONFIG.marketRates.lecapTNA;
+  } else if (inst === 'lecap' || (inst === 'macroLetra' && lecapMode === 'letra')) {
+    const horizon = currentLecapPick();
+    if (inst === 'lecap') {
+      activeTNA = horizon.letter ? Number(horizon.letter.tna) : ZETA_CONFIG.marketRates.lecapTNA;
+    }
+    if (lecapMode === 'letra' && horizon.letter) {
+      selectedLecapTicker = horizon.letter.ticker;
+      currentPlazo = horizon.plazo;
+    }
   } else if (inst === 'fci') {
     activeTNA = ZETA_CONFIG.marketRates.fciTNA;
   } else if (inst === 'plazofijo') {
@@ -844,18 +824,18 @@ function renderLecapCurve() {
   const node = document.getElementById('lecap-curve');
   if (!node) return;
   const letters = (ZETA_CONFIG.marketRates && ZETA_CONFIG.marketRates.lecaps) || [];
-  if (!letters.length) {
-    node.textContent = 'Letras: sin cotización nueva. Sigue el respaldo de config.';
+  const menu = typeof tradableLecaps === 'function' ? tradableLecaps(letters, new Date()) : [];
+  if (!menu.length) {
+    node.textContent = 'Letras: sin una vigente. Las ya vencidas no entran.';
     return;
   }
-  const parts = letters.map((letter) => {
+  const parts = menu.map((letter) => {
     const ticker = letter.ticker || 'LECAP';
     const tna = formatLecapTna(letter.tna);
-    const tea = letter.tea != null ? formatLecapTna(letter.tea) : null;
-    return tea ? `${ticker} TNA ${tna}% · TIR ${tea}%` : `${ticker} TNA ${tna}%`;
+    return `${ticker} ${letter.diasHoy}d TNA ${tna}%`;
   });
-  const source = lecapSourceCaption(ZETA_CONFIG.marketRates.lecapDetails);
-  node.textContent = `Letras ${source}: ${parts.join('  ·  ')}`;
+  const source = lecapSourceCaption(menu[0]);
+  node.textContent = `Letras vigentes ${source}: ${parts.join('  ·  ')}`;
 }
 
 function updateCaucionPillRates() {
@@ -1024,13 +1004,18 @@ function setupEventListeners() {
 }
 
 function setMacroPlazo(days) {
+  lecapMode = 'plazo';
+  selectedLecapTicker = null;
+  manualLecapTicker = null;
   macroPlazoFollowsVto = false;
+  letraTnaDirty = false;
+  const input = document.getElementById('input-plazo-macro');
+  if (input) input.readOnly = false;
   setPlazo(days);
 }
 
 function useLetraVto() {
-  macroPlazoFollowsVto = true;
-  setPlazo(letraDaysFromConfig());
+  setLecapMode('letra');
 }
 
 function setCapital(amount) {
@@ -1040,13 +1025,21 @@ function setCapital(amount) {
 }
 
 function setPlazo(days) {
-  const max = isChequeMode() ? 180 : (isMacroLetraMode() ? 365 : 35);
+  const max = isChequeMode() ? 180 : ((isMacroLetraMode() || selectedInstrument === 'lecap') ? 365 : 35);
   let safe = parseInt(days, 10);
   if (!isFinite(safe) || safe < 1) safe = 1;
   if (safe > max) safe = max;
+  const changed = safe !== currentPlazo;
   currentPlazo = safe;
+  if (!syncingLecapHorizon && (isMacroLetraMode() || selectedInstrument === 'lecap') && lecapMode === 'letra' && changed) {
+    lecapMode = 'plazo';
+    selectedLecapTicker = null;
+    manualLecapTicker = null;
+    letraTnaDirty = false;
+  }
   if (isChequeMode()) chequePlazoDays = safe;
   else if (isMacroLetraMode()) macroLetraPlazoDays = safe;
+  else if (selectedInstrument === 'lecap') lecapPlazoDays = safe;
   else if (currentCurrency === 'ARS') liquidityPlazo = safe;
 
   const slider = document.getElementById('slider-plazo');
@@ -1212,10 +1205,21 @@ function calculateYield() {
   if (gananciaLabel) gananciaLabel.textContent = 'Rendimiento';
 
   const currPrefix = currentCurrency === 'USD' ? 'US$' : '$';
-  const quote = netQuote(selectedInstrument, activeTNA, currentPlazo);
+  let quoteDays = currentPlazo;
+  let quoteTna = activeTNA;
+  if (selectedInstrument === 'lecap') {
+    const horizon = currentLecapPick();
+    if (horizon.letter) {
+      quoteDays = horizon.letter.diasHoy;
+      quoteTna = Number(horizon.letter.tna);
+      activeTNA = quoteTna;
+    }
+    syncLecapHorizonUI(horizon);
+  }
+  const quote = netQuote(selectedInstrument, quoteTna, quoteDays);
   const rendimiento = Math.round(quote.interes);
   const capitalFinal = currentCapital + rendimiento;
-  const rendimientoDiario = currentPlazo > 0 ? Math.round(rendimiento / currentPlazo) : 0;
+  const rendimientoDiario = quoteDays > 0 ? Math.round(rendimiento / quoteDays) : 0;
 
   // Actualizar Tarjeta Principal
   document.getElementById('display-rendimiento').textContent = `+${currPrefix}${formatNumber(rendimiento)}`;
@@ -1294,7 +1298,11 @@ function renderComparisonTable(currentRendimiento) {
   const rates = ZETA_CONFIG.marketRates;
   const tnaCaucion = caucionTnaForDays(currentPlazo);
   const caucionQuote = netQuote('caucion', tnaCaucion, currentPlazo);
-  const lecapQuote = netQuote('lecap', rates.lecapTNA, currentPlazo);
+  const letterHorizon = currentLecapPick();
+  const letter = letterHorizon.letter;
+  const lecapDays = letter ? letter.diasHoy : currentPlazo;
+  const lecapTna = letter ? letter.tna : rates.lecapTNA;
+  const lecapQuote = netQuote('lecap', lecapTna, lecapDays);
   const fciQuote = netQuote('fci', rates.fciTNA, currentPlazo);
   const yieldCaucion = Math.round(caucionQuote.interes);
   const yieldLecap = Math.round(lecapQuote.interes);
@@ -1303,8 +1311,11 @@ function renderComparisonTable(currentRendimiento) {
   // Plazo fijo: requiere min 30 días
   const pfEligible = currentPlazo >= 30;
   const yieldPlazoFijo = Math.round(currentCapital * (rates.plazoFijoTNA / 100) * (currentPlazo / 365));
-  const lecapTicker = rates.lecapDetails?.ticker || "S30N6";
-  const lecapVto = rates.lecapDetails?.vencimiento || "30/11/2026";
+  const lecapTicker = letter ? letter.ticker : (rates.lecapDetails?.ticker || "S30N6");
+  const lecapVto = letter ? (letter.vencimiento || "") : (rates.lecapDetails?.vencimiento || "30/11/2026");
+  const lecapDayNote = lecapDays === currentPlazo
+    ? `${lecapDays} días`
+    : `${lecapDays} días hasta el vencimiento`;
 
   container.innerHTML = `
     <!-- 1. LECAP Corta -->
@@ -1319,7 +1330,7 @@ function renderComparisonTable(currentRendimiento) {
             <span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-400 font-mono font-bold">${formatLecapTna(lecapQuote.tnaNeta)}% neta</span>
             <span class="text-[9px] px-1 py-0.2 rounded bg-emerald-900/60 text-emerald-300">Vto: ${lecapVto}</span>
           </div>
-          <span class="text-[11px] text-slate-400">Bruta ${formatLecapTna(rates.lecapTNA)}% · compra única, sin venta &bull; ${lecapSourceCaption(rates.lecapDetails)}</span>
+          <span class="text-[11px] text-slate-400">Bruta ${formatLecapTna(lecapTna)}% · ${lecapDayNote} · compra única, sin venta</span>
         </div>
       </div>
       <span class="font-mono font-bold text-emerald-400 text-sm">+${currPrefix}${formatNumber(yieldLecap)}</span>
@@ -1417,6 +1428,7 @@ function isMacroLetraMode() {
 function syncChequeMode() {
   const cheque = isChequeMode();
   const macro = isMacroLetraMode();
+  const lecapInst = currentCurrency === 'ARS' && selectedInstrument === 'lecap';
   const single = !cheque && !macro;
   const toggle = (id, show) => {
     const el = document.getElementById(id);
@@ -1431,6 +1443,7 @@ function syncChequeMode() {
   toggle('macro-rate-overrides', macro);
   toggle('macro-plazo-direct', macro);
   toggle('plazo-pills-macro', macro);
+  toggle('lecap-horizon-mode', macro || lecapInst);
   toggle('macro-comparison-card', macro);
   toggle('macro-result-stack', macro);
   toggle('plazo-pills-liquidity', single);
@@ -1450,7 +1463,9 @@ function syncChequeMode() {
   } else if (macro) {
     if (capitalLabel) capitalLabel.textContent = 'Capital a colocar';
     if (capitalHint) capitalHint.textContent = 'El tramo de Macro depende del monto';
-    if (plazoLabel) plazoLabel.textContent = 'Días al vencimiento de la letra';
+    if (plazoLabel) plazoLabel.textContent = lecapMode === 'letra' ? 'Días hasta el vencimiento de la letra' : 'Plazo libre (días)';
+  } else if (lecapInst) {
+    if (plazoLabel) plazoLabel.textContent = lecapMode === 'letra' ? 'Días hasta el vencimiento de la letra' : 'Plazo libre (días)';
   } else if (currentCurrency === 'ARS') {
     if (capitalLabel) capitalLabel.textContent = 'Capital a Rentabilizar';
     if (capitalHint) capitalHint.textContent = 'Mínimo sugerido: $500.000 ARS';
@@ -1463,7 +1478,7 @@ function syncChequeMode() {
 
   const slider = document.getElementById('slider-plazo');
   if (slider) {
-    slider.max = cheque ? '180' : (macro ? '365' : '35');
+    slider.max = cheque ? '180' : ((macro || lecapInst) ? '365' : '35');
     slider.classList.toggle('accent-violet-500', cheque);
     slider.classList.toggle('accent-sky-500', macro);
     slider.classList.toggle('accent-blue-500', !cheque && !macro);
@@ -1717,9 +1732,181 @@ function escapeHtml(str) {
 
 function letraDaysFromConfig() {
   const details = ZETA_CONFIG.marketRates && ZETA_CONFIG.marketRates.lecapDetails;
+  if (details && typeof tradableLecaps === 'function') {
+    const menu = tradableLecaps([details], new Date());
+    if (menu.length) return menu[0].diasHoy;
+  }
   const days = Number(details && details.diasAlVencimiento);
   if (isFinite(days) && days >= 1) return Math.round(days);
-  return 38;
+  return 35;
+}
+
+function currentLecapPick() {
+  const source = (ZETA_CONFIG.marketRates && ZETA_CONFIG.marketRates.lecaps) || [];
+  const configured = Number(ZETA_CONFIG.macroVsLetra && ZETA_CONFIG.macroVsLetra.maxGapDays);
+  const maxGapDays = isFinite(configured) && configured >= 0 ? configured : undefined;
+  if (typeof resolveLecapHorizon === 'function') {
+    return resolveLecapHorizon(source, {
+      mode: lecapMode,
+      ticker: lecapMode === 'letra' ? (selectedLecapTicker || manualLecapTicker) : manualLecapTicker,
+      plazoDays: currentPlazo,
+      today: new Date(),
+      maxGapDays
+    });
+  }
+  if (typeof pickLecapForPlazo !== 'function') {
+    return {
+      mode: lecapMode,
+      menu: [],
+      letter: null,
+      fit: false,
+      manual: false,
+      plazo: currentPlazo,
+      gapDays: null,
+      absGap: null,
+      maxGapDays: 15,
+      criterion: '',
+      today: ''
+    };
+  }
+  const pick = pickLecapForPlazo(source, currentPlazo, {
+    today: new Date(),
+    maxGapDays,
+    ticker: manualLecapTicker
+  });
+  pick.mode = 'plazo';
+  return pick;
+}
+
+function shortVencimiento(value) {
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || '');
+  if (iso) return iso[3] + '/' + iso[2];
+  const dmy = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value || '');
+  if (dmy) return dmy[1] + '/' + dmy[2];
+  return value || '';
+}
+
+function gapPhrase(letter, plazo) {
+  const diff = letter.diasHoy - plazo;
+  if (diff === 0) return 'vence en el plazo pedido';
+  if (diff < 0) return Math.abs(diff) + ' días antes del plazo pedido';
+  return diff + ' días después del plazo pedido';
+}
+
+function formatLetraElegida(pick) {
+  if (!pick.letter) return 'No hay una letra vigente.';
+  const vto = shortVencimiento(pick.letter.vencimiento || pick.letter.maturity);
+  if (pick.mode === 'letra') {
+    return `Modo por letra: ${pick.letter.ticker}, vence ${vto}, ${pick.letter.diasHoy} días`;
+  }
+  const modo = pick.manual ? 'Letra elegida a mano' : 'Letra elegida';
+  return `Modo por plazo. ${modo}: ${pick.letter.ticker}, vence ${vto}, ${pick.letter.diasHoy} días`;
+}
+
+function formatLetraWarning(pick) {
+  if (pick.mode === 'letra') return '';
+  if (!pick.letter) {
+    return 'No quedó ninguna letra vigente. Las ya vencidas se descartan.';
+  }
+  const vto = shortVencimiento(pick.letter.vencimiento || pick.letter.maturity);
+  const cuanto = gapPhrase(pick.letter, pick.plazo);
+  if (pick.manual && !pick.fit) {
+    return `La elegiste a mano: ${pick.letter.ticker} vence ${vto}, ${pick.letter.diasHoy} días, ${cuanto}. La cuenta usa ese vencimiento, no los ${pick.plazo} días tipeados.`;
+  }
+  if (pick.fit) return '';
+  return `Ninguna letra calza con ${pick.plazo} días (la tolerancia es ${pick.maxGapDays}). La más cercana es ${pick.letter.ticker}: vence ${vto}, ${pick.letter.diasHoy} días, ${cuanto}. No se la compara como si fuera un plazo de ${pick.plazo} días. Elegila y el plazo pasa a ser ese vencimiento.`;
+}
+
+let syncingLecapHorizon = false;
+
+function selectLecapLetra(ticker) {
+  lecapMode = 'letra';
+  selectedLecapTicker = String(ticker || '').toUpperCase();
+  manualLecapTicker = null;
+  letraTnaDirty = false;
+  macroPlazoFollowsVto = false;
+  const horizon = currentLecapPick();
+  if (!horizon.letter) {
+    calculateYield();
+    return;
+  }
+  selectedLecapTicker = horizon.letter.ticker;
+  if (selectedInstrument === 'lecap') activeTNA = Number(horizon.letter.tna);
+  syncingLecapHorizon = true;
+  setPlazo(horizon.plazo);
+  syncingLecapHorizon = false;
+}
+
+function selectMacroLetra(ticker) {
+  selectLecapLetra(ticker);
+}
+
+function setLecapMode(mode) {
+  if (mode === 'plazo') {
+    lecapMode = 'plazo';
+    selectedLecapTicker = null;
+    manualLecapTicker = null;
+    macroPlazoFollowsVto = false;
+    const input = document.getElementById('input-plazo-macro');
+    if (input) {
+      input.readOnly = false;
+      input.focus();
+    }
+    calculateYield();
+    return;
+  }
+  selectLecapLetra(selectedLecapTicker);
+}
+
+function clearMacroLetraManual() {
+  manualLecapTicker = null;
+  letraTnaDirty = false;
+  if (lecapMode === 'letra') setLecapMode('letra');
+  else calculateYield();
+}
+
+function syncLecapHorizonUI(pick) {
+  const horizon = pick || currentLecapPick();
+  const porLetra = horizon.mode !== 'plazo';
+  const input = document.getElementById('input-plazo-macro');
+  const macroLabel = document.getElementById('label-plazo-macro');
+  if (input) input.readOnly = porLetra;
+  if (macroLabel) macroLabel.textContent = porLetra ? 'Días hasta el vencimiento' : 'Plazo libre (días)';
+  const slider = document.getElementById('slider-plazo');
+  const lockSlider = porLetra && (isMacroLetraMode() || selectedInstrument === 'lecap');
+  if (slider) slider.disabled = lockSlider;
+  const letraBtn = document.getElementById('btn-mode-letra');
+  const plazoBtn = document.getElementById('btn-mode-plazo');
+  const on = 'px-3 py-1.5 rounded-lg text-xs font-semibold border border-sky-500 bg-sky-500/15 text-sky-100';
+  const off = 'px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-700 bg-slate-800 text-slate-300';
+  if (letraBtn) letraBtn.className = porLetra ? on : off;
+  if (plazoBtn) plazoBtn.className = porLetra ? off : on;
+  const note = document.getElementById('lecap-horizon-note');
+  if (note) {
+    if (!horizon.letter) {
+      note.textContent = 'No hay letras vigentes.';
+    } else if (porLetra) {
+      note.textContent = `Modo por letra. El plazo es el vencimiento de ${horizon.letter.ticker}: ${horizon.letter.diasHoy} días.`;
+    } else if (horizon.fit) {
+      note.textContent = `Modo por plazo. ${horizon.letter.ticker} calza con ${horizon.plazo} días (vence en ${horizon.letter.diasHoy}).`;
+    } else {
+      note.textContent = `Modo por plazo. ${horizon.letter.ticker} no calza: vence en ${horizon.letter.diasHoy} días, a ${horizon.absGap} del plazo pedido.`;
+    }
+  }
+  const plazoLabel = document.getElementById('label-plazo');
+  if (plazoLabel && (isMacroLetraMode() || selectedInstrument === 'lecap')) {
+    plazoLabel.textContent = porLetra ? 'Días hasta el vencimiento de la letra' : 'Plazo libre (días)';
+  }
+  const chips = document.getElementById('lecap-letter-chips');
+  if (!chips) return;
+  chips.innerHTML = (horizon.menu || []).map((letter) => {
+    const active = horizon.letter && letter.ticker === horizon.letter.ticker;
+    const vto = shortVencimiento(letter.vencimiento || letter.maturity);
+    const cls = active
+      ? 'border-sky-500 bg-sky-500/15 text-white'
+      : 'border-slate-700 bg-slate-900 text-slate-300';
+    return `<button type="button" data-letra="${escapeHtml(letter.ticker)}" onclick="selectLecapLetra('${escapeHtml(letter.ticker)}')" class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border ${cls}">${escapeHtml(letter.ticker)} · ${escapeHtml(vto)} · ${letter.diasHoy}d</button>`;
+  }).join('');
 }
 
 function getMacroBands() {
@@ -1777,7 +1964,7 @@ function refreshMacroVtoPill() {
   const label = btn.querySelector('[data-vto-label]');
   const sub = btn.querySelector('[data-vto-sub]');
   if (label) label.textContent = days + 'd';
-  if (sub) sub.textContent = 'Vto. letra';
+  if (sub) sub.textContent = 'Referencia';
 }
 
 function readSignedNumber(id, fallback) {
@@ -1821,15 +2008,15 @@ function describeMacroBand(band) {
   return money ? plazo + ' · ' + money : plazo;
 }
 
-function syncMacroReferenceInputs() {
+function syncMacroReferenceInputs(bankDays, letter) {
   const cfg = getMacroLetraConfig();
-  const marketTna = Number(ZETA_CONFIG.marketRates.lecapTNA);
+  const marketTna = letter ? Number(letter.tna) : Number(ZETA_CONFIG.marketRates.lecapTNA);
   if (!letraTnaDirty) {
     const input = document.getElementById('macro-tna-letra');
     if (input && isFinite(marketTna)) input.value = String(marketTna);
   }
-  const band = (currentPlazo >= cfg.minDias)
-    ? pickMacroBand(getMacroBands(), currentCapital, currentPlazo)
+  const band = (bankDays >= cfg.minDias)
+    ? pickMacroBand(getMacroBands(), currentCapital, bankDays)
     : null;
   if (!macroTnaDirty && band) {
     const input = document.getElementById('macro-tna-bank');
@@ -1843,18 +2030,26 @@ function getMacroLetraScenario() {
   const labelInput = document.getElementById('macro-bank-label');
   const typedLabel = labelInput ? labelInput.value.trim() : '';
   const bankLabel = typedLabel || cfg.bankLabel;
-  const band = syncMacroReferenceInputs();
-  const grossTna = readSignedNumber('macro-tna-letra', ZETA_CONFIG.marketRates.lecapTNA);
+  const pick = currentLecapPick();
+  const chosen = pick.letter;
+  const comparable = pick.mode === 'letra' ? !!chosen : !!(chosen && (pick.fit || pick.manual));
+  const letraDays = chosen ? chosen.diasHoy : 0;
+  const bankDays = comparable ? letraDays : currentPlazo;
+  const band = syncMacroReferenceInputs(bankDays, chosen);
+  const marketTna = chosen ? Number(chosen.tna) : Number(ZETA_CONFIG.marketRates.lecapTNA);
+  const grossTna = letraTnaDirty ? readSignedNumber('macro-tna-letra', marketTna) : marketTna;
   const fees = getLecapFees();
-  const letra = withBankTax(calcLetraNeta(currentCapital, currentPlazo, grossTna, fees), getBankTax());
-  const fci = withBankTax(calcFciSimple(currentCapital, currentPlazo, Number(ZETA_CONFIG.marketRates.fciTNA)), getBankTax());
-  const details = ZETA_CONFIG.marketRates.lecapDetails || {};
-  const ticker = details.ticker || 'LECAP';
-  const vtoDays = letraDaysFromConfig();
+  const letra = chosen
+    ? withBankTax(calcLetraNeta(currentCapital, letraDays, grossTna, fees), getBankTax())
+    : { total: null, tnaBruta: null, tnaNeta: null, interes: null, impuesto: null, impuestoExento: true, quedaEnBroker: false, comisionPct: fees.comisionPct, derechosPct: fees.derechosPct };
+  const fci = withBankTax(calcFciSimple(currentCapital, bankDays, Number(ZETA_CONFIG.marketRates.fciTNA)), getBankTax());
+  const ticker = chosen ? chosen.ticker : 'LECAP';
+  const vtoDays = letraDays;
 
   let bank = null;
   let bankReason = null;
-  if (currentPlazo < cfg.minDias) {
+  const bankHorizon = comparable ? bankDays : currentPlazo;
+  if (bankHorizon < cfg.minDias) {
     bankReason = 'min';
   } else if (!macroTnaDirty && !band) {
     bankReason = 'sin-tramo';
@@ -1862,12 +2057,12 @@ function getMacroLetraScenario() {
     const tna = macroTnaDirty
       ? readOptionalNumber('macro-tna-bank', band ? band.tna : 0)
       : band.tna;
-    bank = calcPlazoFijoSimple(currentCapital, currentPlazo, tna);
+    bank = calcPlazoFijoSimple(currentCapital, bankDays, tna);
     if (bank.total == null) bankReason = 'sin-tramo';
   }
 
   const contenders = [];
-  if (letra.total != null) contenders.push({ id: 'letra', total: letra.total, label: 'Letra corta' });
+  if (comparable && letra.total != null) contenders.push({ id: 'letra', total: letra.total, label: ticker });
   if (fci.total != null) contenders.push({ id: 'fci', total: fci.total, label: 'FCI liquidez' });
   if (bank && bank.total != null) contenders.push({ id: 'banco', total: bank.total, label: bankLabel });
   contenders.sort((a, b) => b.total - a.total);
@@ -1902,7 +2097,11 @@ function getMacroLetraScenario() {
     conviene,
     monto: currentCapital,
     plazo: currentPlazo,
-    minDias: cfg.minDias
+    bankDays,
+    minDias: cfg.minDias,
+    pick,
+    comparable,
+    warning: formatLetraWarning(pick)
   };
 }
 
@@ -1919,12 +2118,21 @@ function renderMacroLetraExperience() {
   const breakeven = document.getElementById('macro-breakeven');
   if (breakeven) breakeven.textContent = macroBreakEvenText(scenario);
 
+  renderMacroLetraMenu(scenario);
+  syncLecapHorizonUI(scenario.pick);
+
   const note = document.getElementById('macro-comparison-note');
   if (note) {
-    const vtoNote = scenario.plazo === scenario.vtoDays
-      ? `Plazo del vencimiento de ${scenario.ticker} (${scenario.vtoDays} días).`
-      : `Estás simulando ${scenario.plazo} días. ${scenario.ticker} vence en ${scenario.vtoDays}.`;
-    note.textContent = vtoNote + ' Mismo capital de los dos lados.';
+    if (!scenario.pick.letter) {
+      note.textContent = 'Sin letra vigente para comparar.';
+    } else if (scenario.comparable) {
+      const same = scenario.plazo === scenario.vtoDays;
+      note.textContent = same
+        ? `Se compara a ${scenario.vtoDays} días, el vencimiento de ${scenario.ticker}.`
+        : `Pediste ${scenario.plazo} días. Se compara a ${scenario.vtoDays} días, el vencimiento de ${scenario.ticker}.`;
+    } else {
+      note.textContent = `Pediste ${scenario.plazo} días. La letra no entra en la comparación.`;
+    }
   }
 
   const bandHint = document.getElementById('macro-band-hint');
@@ -1946,15 +2154,26 @@ function renderMacroLetraExperience() {
 
   const letraHint = document.getElementById('macro-letra-hint');
   if (letraHint) {
-    const market = formatPercentPoints(ZETA_CONFIG.marketRates.lecapTNA);
+    const market = scenario.pick.letter ? Number(scenario.pick.letter.tna) : Number(ZETA_CONFIG.marketRates.lecapTNA);
     letraHint.textContent = letraTnaDirty
-      ? `TNA de mercado ${market}. En esta reunión: ${formatPercentPoints(scenario.letra.tnaBruta)}.`
-      : `TNA bruta de ${scenario.ticker}: ${market}.`;
+      ? `TNA de mercado de ${scenario.ticker}: ${formatPercentPoints(market)}. En esta reunión: ${formatPercentPoints(scenario.letra.tnaBruta)}.`
+      : `TNA bruta de ${scenario.ticker}: ${formatPercentPoints(market)}.`;
   }
 
   const top = scenario.contenders && scenario.contenders[0];
   const bankTotal = scenario.bank && scenario.bank.total;
-  if (scenario.bankReason === 'min') {
+  const activeBadge = document.getElementById('active-instrument-badge');
+  if (activeBadge && scenario.ticker) activeBadge.textContent = `Macro vs ${scenario.ticker}`;
+  const macroBadge = document.getElementById('macro-letra-badge');
+  if (macroBadge && scenario.letra && scenario.letra.tnaNeta != null) {
+    macroBadge.textContent = `${formatLecapTna(scenario.letra.tnaNeta)}%`;
+  }
+  if (!scenario.comparable && scenario.warning) {
+    setText('macro-hero-kicker', 'Sin letra que calce');
+    setText('macro-hero-delta', scenario.pick.letter ? (scenario.pick.absGap + ' días') : '—');
+    setText('macro-hero-subtitle', scenario.warning);
+    setText('macro-winner-badge', 'Plazo sin letra');
+  } else if (scenario.bankReason === 'min') {
     setText('macro-hero-kicker', top ? `A recibir con ${top.label}` : 'A recibir');
     setText('macro-hero-delta', top ? formatMoneyARS(top.total) : '—');
     setText('macro-hero-subtitle', `Plazo fijo no disponible bajo ${scenario.minDias} días. La letra y el FCI sí se pueden colocar.`);
@@ -2010,9 +2229,10 @@ function renderMacroBankCard(scenario) {
     ? '<span class="shrink-0 text-[10px] font-bold uppercase tracking-wide text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full">Conviene</span>'
     : '';
   const na = !quote || quote.total == null;
+  const horizon = scenario.bankDays || scenario.plazo;
   const note = scenario.bankReason === 'min'
     ? `No se constituye a menos de ${scenario.minDias} días.`
-    : (scenario.bankReason === 'sin-tramo' ? 'Sin TNA publicada para este plazo y monto.' : 'Interés simple. En el mismo banco no paga débitos y créditos.');
+    : (scenario.bankReason === 'sin-tramo' ? 'Sin TNA publicada para este plazo y monto.' : `Interés simple a ${horizon} días. En el mismo banco no paga débitos y créditos.`);
 
   return `
     <article class="min-w-0 rounded-2xl border p-4 ${border}">
@@ -2036,8 +2256,65 @@ function renderMacroBankCard(scenario) {
   `;
 }
 
+function renderMacroLetraMenu(scenario) {
+  const criterion = document.getElementById('macro-letra-criterion');
+  const chosen = document.getElementById('macro-letra-elegida');
+  const warning = document.getElementById('macro-letra-warning');
+  const list = document.getElementById('macro-letras-list');
+  const pick = scenario.pick;
+  if (criterion) criterion.textContent = pick.criterion || '';
+  if (chosen) chosen.textContent = formatLetraElegida(pick);
+  if (warning) {
+    const text = scenario.warning || '';
+    warning.textContent = text;
+    warning.classList.toggle('hidden', !text);
+  }
+  if (!list) return;
+  const menu = pick.menu || [];
+  if (!menu.length) {
+    list.innerHTML = '';
+    return;
+  }
+  const fees = scenario.fees;
+  const rows = menu.map((letter) => {
+    const net = calcLetraNeta(currentCapital, letter.diasHoy, letter.tna, fees);
+    const selected = pick.letter && letter.ticker === pick.letter.ticker;
+    const vto = shortVencimiento(letter.vencimiento || letter.maturity);
+    return `<tr class="${selected ? 'bg-sky-500/10' : ''}">
+      <td class="py-1.5 pr-3 font-mono font-bold text-white">${escapeHtml(letter.ticker)}</td>
+      <td class="py-1.5 pr-3 text-slate-300">${escapeHtml(vto)}</td>
+      <td class="py-1.5 pr-3 font-mono text-slate-200">${letter.diasHoy}</td>
+      <td class="py-1.5 pr-3 font-mono text-slate-200">${formatPercentPoints(letter.tna)}</td>
+      <td class="py-1.5 pr-3 font-mono text-slate-200">${formatPercentPoints(net.tnaNeta)}</td>
+      <td class="py-1.5 text-right">
+        <button type="button" data-letra="${escapeHtml(letter.ticker)}" onclick="selectMacroLetra('${escapeHtml(letter.ticker)}')" class="text-[10px] font-semibold ${selected ? 'text-sky-300' : 'text-slate-400 hover:text-white'}">
+          ${selected ? (pick.mode === 'letra' ? 'Elegida' : 'Más cercana') : 'Elegir'}
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+  const manual = pick.manual
+    ? '<button type="button" onclick="clearMacroLetraManual()" class="mt-2 text-[10px] font-semibold text-sky-400 hover:text-sky-300">Volver a la automática</button>'
+    : '';
+  list.innerHTML = `<div class="overflow-x-auto">
+    <table class="w-full text-[11px] text-left">
+      <thead>
+        <tr class="text-[10px] uppercase tracking-wide text-slate-500">
+          <th class="py-1 pr-3 font-semibold">Letra</th>
+          <th class="py-1 pr-3 font-semibold">Vence</th>
+          <th class="py-1 pr-3 font-semibold">Días</th>
+          <th class="py-1 pr-3 font-semibold">TNA bruta</th>
+          <th class="py-1 pr-3 font-semibold">TNA neta</th>
+          <th class="py-1 font-semibold text-right"></th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>${manual}`;
+}
+
 function renderMacroLetraCard(scenario) {
-  const won = scenario.winner === 'letra' && scenario.bank && scenario.bank.total != null;
+  const won = scenario.comparable && scenario.winner === 'letra' && scenario.bank && scenario.bank.total != null;
   const quote = scenario.letra;
   const border = won ? 'border-emerald-500 bg-emerald-500/10' : 'border-slate-800 bg-slate-950/40';
   const badge = won
@@ -2053,8 +2330,8 @@ function renderMacroLetraCard(scenario) {
     <article class="min-w-0 rounded-2xl border p-4 ${border}">
       <div class="flex items-start justify-between gap-2 mb-3">
         <div class="min-w-0">
-          <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Letra corta</p>
-          <h5 class="font-bold text-white text-sm leading-snug">${escapeHtml(scenario.ticker)}</h5>
+          <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500">${scenario.comparable ? 'Letra elegida' : 'Letra más cercana'}</p>
+          <h5 class="font-bold text-white text-sm leading-snug">${escapeHtml(scenario.ticker)}${scenario.vtoDays ? ' · ' + scenario.vtoDays + ' días' : ''}</h5>
           <p class="text-[11px] text-slate-400 mt-0.5">TNA bruta ${formatPercentPoints(quote.tnaBruta)} · neta ${formatPercentPoints(quote.tnaNeta)}</p>
         </div>
         ${badge}
@@ -2111,6 +2388,7 @@ function renderMacroFciCard(scenario) {
 }
 
 function macroBreakEvenText(scenario) {
+  if (!scenario.comparable) return '';
   if (typeof breakEvenLecapDays !== 'function' || typeof lecapPurchaseCostFraction !== 'function') return '';
   if (!scenario.bank || scenario.bank.tna == null || scenario.letra.tnaBruta == null) {
     return 'El empate contra el plazo fijo aparece cuando Macro tiene TNA para estos días.';
@@ -2185,6 +2463,8 @@ function buildLeadPayload(contact) {
       instrument: 'macro_vs_letra',
       monto: roundMoney(scenario.monto),
       plazo: scenario.plazo,
+      letraDias: scenario.vtoDays || null,
+      letraCalza: !!scenario.comparable,
       bankLabel: scenario.bankLabel,
       ticker: scenario.ticker,
       tnaMacro: scenario.bank ? scenario.bank.tna : null,
@@ -2250,22 +2530,14 @@ function handleLeadSubmit(event) {
 }
 
 function saveLeadToSheet(leadData) {
-  if (!ZETA_CONFIG.googleSheetWebhookUrl) {
-    console.log("[Zeta Finance] Lead guardado localmente:", leadData);
-    return;
-  }
-
-  // Mismo JSON de siempre. text/plain es un header simple: con no-cors el browser
-  // deja salir el POST. application/json lo rechaza antes de llegar al Sheet.
-  fetch(ZETA_CONFIG.googleSheetWebhookUrl, {
+  fetch('/api/lead', {
     method: 'POST',
-    mode: 'no-cors',
-    headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(leadData)
-  }).then(() => {
-    console.log("[Zeta Finance] Lead sincronizado con Google Sheets.");
-  }).catch(err => {
-    console.error("[Zeta Finance] Error al sincronizar:", err);
+  }).then((res) => {
+    if (!res.ok) console.info('[Zeta Finance] El prospecto no llegó al Sheet.');
+  }).catch(() => {
+    console.info('[Zeta Finance] El prospecto no llegó al Sheet.');
   });
 }
 
