@@ -45,6 +45,37 @@ test('sin el impuesto al cheque el líquido es el crédito y la TNA es la de la 
   assert.equal(quote.tnaCostoPct, 26.33);
 });
 
+test('sin la casilla de FCI el impuesto al cheque sigue en el costo', () => {
+  const quote = calcChequeCosto(1000000, 60, chequeCostoEjemplo());
+  assert.equal(quote.cobroFciMoneyMarket, false);
+  assert.ok(quote.icdbNeto > 0);
+  assert.equal(quote.tnaCostoPct, 30.16);
+  assert.equal(quote.tnaConIcdbPct, 30.16);
+  assert.equal(quote.tnaSinIcdbPct, 26.33);
+  assert.ok(quote.liquido < quote.preIcdb);
+});
+
+test('con el cobro a un FCI money market a 1 día el impuesto al cheque queda en cero', () => {
+  const params = Object.assign(chequeCostoEjemplo(), { cobroFciMoneyMarket: true });
+  const a60 = calcChequeCosto(1000000, 60, params);
+  const a90 = calcChequeCosto(1000000, 90, params);
+
+  assert.equal(a60.cobroFciMoneyMarket, true);
+  assert.equal(a60.icdbNeto, 0);
+  assert.ok(Math.abs(a60.liquido - a60.preIcdb) < 0.01);
+  assert.equal(Math.round(a60.liquido), 958510);
+  assert.equal(a60.tnaCostoPct, 26.33);
+  assert.equal(a60.tnaSinIcdbPct, 26.33);
+  assert.equal(a60.tnaConIcdbPct, 30.16);
+  assert.ok(a60.icdbConImpuesto > 0);
+
+  assert.equal(a90.icdbNeto, 0);
+  assert.equal(Math.round(a90.liquido), 938979);
+  assert.equal(a90.tnaCostoPct, 26.36);
+  assert.equal(a90.tnaSinIcdbPct, 26.36);
+  assert.equal(a90.tnaConIcdbPct, 28.96);
+});
+
 test('computar el 100% del impuesto deja el líquido en el crédito', () => {
   const full = calcChequeCosto(1000000, 60, chequeCostoEjemplo());
   const micro = calcChequeCosto(1000000, 60, Object.assign(chequeCostoEjemplo(), { computoGanancias: 1 }));

@@ -999,7 +999,7 @@ function setupEventListeners() {
     });
   });
   [
-    'cheque-aplicar-compra', 'cheque-iva-intereses', 'cheque-comision-banco-iva', 'cheque-aval-sgr-iva', 'cheque-computo'
+    'cheque-cobro-fci', 'cheque-aplicar-compra', 'cheque-iva-intereses', 'cheque-comision-banco-iva', 'cheque-aval-sgr-iva', 'cheque-computo'
   ].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -1596,6 +1596,7 @@ function getChequeConfig() {
       alycPct: numberOr(costos.alycPct, 0.40),
       icdbAlicuota: numberOr(costos.icdbAlicuota, 0.006),
       computoGanancias: numberOr(costos.computoGanancias, 0),
+      cobroFciMoneyMarket: costos.cobroFciMoneyMarket === true,
       ivaIntereses: costos.ivaIntereses === true,
       ivaInteresesAlicuota: numberOr(costos.ivaInteresesAlicuota, 0.21),
       comisionBancoPct: numberOr(costos.comisionBancoPct, 0),
@@ -1653,6 +1654,7 @@ function initChequeControls() {
   setInputValue('cheque-aval-sgr', costos.avalSgrPct);
   setInputValue('cheque-sellos', costos.sellosPct);
   setInputValue('cheque-iva-intereses-aliq', Math.round(costos.ivaInteresesAlicuota * 1000) / 10);
+  setChecked('cheque-cobro-fci', costos.cobroFciMoneyMarket);
   setChecked('cheque-aplicar-compra', costos.aplicarCompra);
   setChecked('cheque-iva-intereses', costos.ivaIntereses);
   setChecked('cheque-comision-banco-iva', costos.comisionBancoIva);
@@ -1703,6 +1705,7 @@ function readChequeCostParams(tna) {
     alycPct: readOptionalNumber('cheque-alyc', cfg.alycPct),
     icdbAlicuota: readOptionalNumber('cheque-icdb', cfg.icdbAlicuota * 100) / 100,
     computoGanancias: isFinite(computo) && computo >= 0 && computo <= 1 ? computo : 0,
+    cobroFciMoneyMarket: readCheckbox('cheque-cobro-fci', cfg.cobroFciMoneyMarket),
     ivaIntereses: readCheckbox('cheque-iva-intereses', cfg.ivaIntereses),
     ivaInteresesAlicuota: readOptionalNumber('cheque-iva-intereses-aliq', cfg.ivaInteresesAlicuota * 100) / 100,
     comisionBancoPct: readOptionalNumber('cheque-comision-banco', cfg.comisionBancoPct),
@@ -1768,8 +1771,13 @@ function renderChequeExperience() {
   }
 
   setText('cheque-hero-cft', formatMoneyARS(scenario.zeta.montoRecibido));
-  setText('cheque-hero-subtitle', 'Propuesta Zeta, después de los costos cargados.');
-  setText('cheque-hero-rates', `TNA ${formatPercentPoints(scenario.zeta.tnaCostoPct)} · TEA ${formatPercentPoints(scenario.zeta.teaCostoPct)}`);
+  const fci = !!(scenario.zeta && scenario.zeta.cobroFciMoneyMarket);
+  setText('cheque-hero-subtitle', fci
+    ? 'Propuesta Zeta. En esta simulación el impuesto al cheque quedó en cero porque el cobro va a un FCI money market a 1 día. A confirmar: no es una exención definitiva.'
+    : 'Propuesta Zeta, después de los costos cargados.');
+  setText('cheque-hero-rates', fci
+    ? `TNA sin impuesto ${formatPercentPoints(scenario.zeta.tnaSinIcdbPct)} · TNA con impuesto ${formatPercentPoints(scenario.zeta.tnaConIcdbPct)} (no aplicada)`
+    : `TNA ${formatPercentPoints(scenario.zeta.tnaCostoPct)} · TEA ${formatPercentPoints(scenario.zeta.teaCostoPct)}`);
   setText('cheque-winner-badge', scenario.conviene === 'Empate' || scenario.conviene === 'No comparable'
     ? scenario.conviene
     : `Conviene ${scenario.conviene}`);
@@ -1828,7 +1836,8 @@ function renderChequeSideCard(key, title, quote, scenario) {
         ${quote.comisionBanco > 0 ? chequeMoneyRow('Comisión bancaria', quote.comisionBanco) : ''}
         ${quote.avalSgr > 0 ? chequeMoneyRow('Aval SGR', quote.avalSgr) : ''}
         ${quote.sellos > 0 ? chequeMoneyRow('Sellos', quote.sellos) : ''}
-        ${chequeMoneyRow('Impuesto créd/déb', quote.icdbNeto)}
+        ${chequeMoneyRow(quote.cobroFciMoneyMarket ? 'Impuesto créd/déb (en cero)' : 'Impuesto créd/déb', quote.icdbNeto)}
+        ${quote.cobroFciMoneyMarket ? '<p class="text-[10px] leading-relaxed text-amber-200">En esta simulación el impuesto al cheque quedó en cero: el cobro va a un FCI money market a 1 día. A confirmar. No es una exención definitiva.</p>' : ''}
         ${chequeMoneyRow('Total costos', quote.totalCostos, true)}
       </div>
       <div class="mt-3 rounded-xl ${won ? 'bg-emerald-500/15' : 'bg-slate-800/80'} px-3 py-2.5 flex items-center justify-between gap-2">
@@ -1838,6 +1847,7 @@ function renderChequeSideCard(key, title, quote, scenario) {
       <div class="mt-3 space-y-1.5 text-xs">
         ${chequePctPointsRow('Costo efectivo TNA', quote.tnaCostoPct)}
         ${chequePctPointsRow('Costo efectivo TEA', quote.teaCostoPct)}
+        ${quote.cobroFciMoneyMarket ? chequePctPointsRow('TNA con impuesto (no aplicada)', quote.tnaConIcdbPct) : ''}
         ${chequePctPointsRow('TNA sin impuesto al cheque', quote.tnaSinIcdbPct)}
       </div>
       <div class="mt-3 pt-3 border-t border-slate-800/80">

@@ -150,6 +150,7 @@ const ZETA_CONFIG = {
       alycPct: 0.40,
       icdbAlicuota: 0.006,
       computoGanancias: 0,
+      cobroFciMoneyMarket: false,
       ivaIntereses: false,
       ivaInteresesAlicuota: 0.21,
       comisionBancoPct: 0,
