@@ -31,6 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
   macroLetraPlazoDays = letraDaysFromConfig();
   lecapPlazoDays = macroLetraPlazoDays;
   setupEventListeners();
+  seedChequeMarketFallbacks();
   initChequeControls();
   initMacroLetraControls();
   initTaxToggles();
@@ -66,7 +67,7 @@ async function fetchLiveRates(force = false) {
   const icon = document.getElementById('refresh-icon');
   if (icon) icon.classList.add('animate-spin');
 
-  const cacheKey = 'zeta_market_rates_cache_v4';
+  const cacheKey = 'zeta_market_rates_cache_v5';
   const ttlMs = (ZETA_CONFIG.ratesConfig?.refreshIntervalMinutes || 30) * 60 * 1000;
 
   // 1. Revisar si hay datos en caché válidos por menos de 30 minutos
@@ -131,6 +132,7 @@ async function fetchDirectArgentinaDatos() {
   try {
     let updated = false;
     const fallbackCurve = { ...(ZETA_CONFIG.marketRates.caucionByDays || {}) };
+    let directCaucionQuotes = null;
 
     // Caución: BYMA primero. ArgentinaDatos suele devolver [] aunque el mercado esté abierto.
     let caucionCurve = null;
@@ -148,7 +150,9 @@ async function fetchDirectArgentinaDatos() {
       });
       if (bymaRes.ok && typeof quotesFromBymaRows === 'function' && typeof bucketCaucionQuotes === 'function') {
         const bymaRows = await bymaRes.json();
-        const curve = bucketCaucionQuotes(quotesFromBymaRows(bymaRows), fallbackCurve);
+        const quotes = quotesFromBymaRows(bymaRows);
+        if (quotes.length) directCaucionQuotes = quotes;
+        const curve = bucketCaucionQuotes(quotes, fallbackCurve);
         if (curve.filledBuckets > 0) caucionCurve = curve.caucionByDays;
       }
     } catch (bymaError) {
@@ -222,21 +226,44 @@ async function fetchDirectArgentinaDatos() {
       console.info('[Zeta Finance] FCI directo no disponible:', fciError.message);
     }
 
+    try {
+      const bRes = await fetch(ZETA_CONFIG.ratesConfig?.directBcraMonetariasUrl || 'https://api.bcra.gob.ar/estadisticas/v4.0/monetarias?limit=3000', {
+        headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' },
+        signal: AbortSignal.timeout(5000)
+      });
+      if (bRes.ok && typeof parseBcraMonetarias === 'function' && typeof bcraPanelFromSources === 'function') {
+        const panel = bcraPanelFromSources(parseBcraMonetarias(await bRes.json()));
+        if (panel && panel.series && panel.series.some((row) => row.fuente === 'bcra')) {
+          ZETA_CONFIG.marketRates.bcra = panel;
+          updated = true;
+        }
+      }
+    } catch (bcraError) {
+      console.info('[Zeta Finance] BCRA directo no disponible:', bcraError.message);
+    }
+
     const lecapPayload = await fetchDirectLecapCurve();
     if (lecapPayload) {
-      ZETA_CONFIG.marketRates.lecapTNA = lecapPayload.rates.lecapTNA;
-      ZETA_CONFIG.marketRates.lecapDetails = lecapPayload.rates.lecapDetails;
-      ZETA_CONFIG.marketRates.lecaps = lecapPayload.rates.lecaps;
+      if (lecapPayload.rates.lecapTNA) {
+        ZETA_CONFIG.marketRates.lecapTNA = lecapPayload.rates.lecapTNA;
+        ZETA_CONFIG.marketRates.lecapDetails = lecapPayload.rates.lecapDetails;
+        ZETA_CONFIG.marketRates.lecaps = lecapPayload.rates.lecaps;
+      }
+      if (lecapPayload.rates.chequeLecaps) {
+        ZETA_CONFIG.marketRates.chequeLecaps = lecapPayload.rates.chequeLecaps;
+      }
       updated = true;
     }
 
     if (updated) {
       const payload = { ...ZETA_CONFIG.marketRates };
       if (macroBands) payload.macroPlazoFijoBands = macroBands;
+      if (directCaucionQuotes) payload.caucionQuotes = directCaucionQuotes;
       if (lecapPayload) {
-        payload.lecapTNA = lecapPayload.rates.lecapTNA;
-        payload.lecapDetails = lecapPayload.rates.lecapDetails;
-        payload.lecaps = lecapPayload.rates.lecaps;
+        if (lecapPayload.rates.lecapTNA) payload.lecapTNA = lecapPayload.rates.lecapTNA;
+        if (lecapPayload.rates.lecapDetails) payload.lecapDetails = lecapPayload.rates.lecapDetails;
+        if (lecapPayload.rates.lecaps) payload.lecaps = lecapPayload.rates.lecaps;
+        if (lecapPayload.rates.chequeLecaps) payload.chequeLecaps = lecapPayload.rates.chequeLecaps;
       }
       const meta = lecapPayload ? lecapPayload.meta : { lecapSource: 'config', lecapSourceLabel: 'config', marketOpen: false };
       applyFetchedRates(payload, new Date(), 'direct', meta);
@@ -275,31 +302,53 @@ async function fetchDirectLecapCurve() {
       signal: AbortSignal.timeout(5000)
     }).catch(() => null);
 
+    const bondsPromise = fetch(ZETA_CONFIG.ratesConfig?.directLecapBondsUrl || 'https://data912.com/live/arg_bonds', {
+      headers,
+      signal: AbortSignal.timeout(4000)
+    }).catch(() => null);
     const notesRes = await notesPromise;
     const bymaRes = await bymaPromise;
-    const data912Rows = notesRes && notesRes.ok ? await notesRes.json() : [];
+    const bondsRes = await bondsPromise;
+    const noteRows = notesRes && notesRes.ok ? await notesRes.json() : [];
+    const bondRows = bondsRes && bondsRes.ok ? await bondsRes.json() : [];
+    const data912Rows = []
+      .concat(Array.isArray(noteRows) ? noteRows : [])
+      .concat(Array.isArray(bondRows) ? bondRows : []);
     let bymaRows = [];
     if (bymaRes && bymaRes.ok) {
       const body = await bymaRes.json();
       bymaRows = Array.isArray(body) ? body : (body && body.data) || [];
     }
+    const rows = Array.isArray(data912Rows) ? data912Rows : [];
     const curve = buildLecapCurve({
       now: new Date(),
-      data912Rows: Array.isArray(data912Rows) ? data912Rows : [],
+      data912Rows: rows,
       bymaRows,
       fichas: {}
     });
-    if (!curve) return null;
+    let chequeLecaps = null;
+    if (typeof buildChequeLecapQuotes === 'function') {
+      const settlement = typeof quoteCalendar === 'function' ? quoteCalendar(new Date()).settlement : null;
+      chequeLecaps = buildChequeLecapQuotes({ data912Rows: rows, settlement });
+    }
+    if (!curve && !chequeLecaps) return null;
     return {
       rates: {
-        lecapTNA: curve.reference.tna,
-        lecapDetails: lecapDetailsFromReference(curve.reference),
-        lecaps: curve.letters
+        ...(curve ? {
+          lecapTNA: curve.reference.tna,
+          lecapDetails: lecapDetailsFromReference(curve.reference),
+          lecaps: curve.letters
+        } : {}),
+        ...(chequeLecaps ? { chequeLecaps } : {})
       },
-      meta: {
+      meta: curve ? {
         lecapSource: curve.source,
         lecapSourceLabel: curve.sourceLabel,
         marketOpen: curve.marketOpen
+      } : {
+        lecapSource: 'config',
+        lecapSourceLabel: 'config',
+        marketOpen: false
       }
     };
   } catch (error) {
@@ -350,6 +399,15 @@ function applyFetchedRates(newRates, timestamp, origin, meta) {
     liveMacroBands = newRates.macroPlazoFijoBands;
   }
   if (newRates.usdRateAnnual) ZETA_CONFIG.marketRates.usdRateAnnual = newRates.usdRateAnnual;
+  if (newRates.bcra && Array.isArray(newRates.bcra.series) && newRates.bcra.series.length) {
+    ZETA_CONFIG.marketRates.bcra = newRates.bcra;
+  }
+  if (newRates.chequeLecaps && Array.isArray(newRates.chequeLecaps.letters)) {
+    ZETA_CONFIG.marketRates.chequeLecaps = newRates.chequeLecaps;
+  }
+  if (Array.isArray(newRates.caucionQuotes) && newRates.caucionQuotes.length) {
+    ZETA_CONFIG.marketRates.caucionQuotes = newRates.caucionQuotes;
+  }
 
   updateInstrumentRates();
   if (currentCurrency === 'ARS') {
@@ -364,7 +422,7 @@ function applyFetchedRates(newRates, timestamp, origin, meta) {
 
 function saveRatesToCache(rates, meta) {
   try {
-    localStorage.setItem('zeta_market_rates_cache_v4', JSON.stringify({
+    localStorage.setItem('zeta_market_rates_cache_v5', JSON.stringify({
       timestamp: Date.now(),
       rates,
       meta: meta || lecapQuoteMeta
@@ -928,13 +986,39 @@ function setupEventListeners() {
     }
   });
 
-  ['cheque-bank-label', 'cheque-tna-bank', 'cheque-tna-zeta'].forEach(id => {
+  [
+    'cheque-bank-label', 'cheque-tna-bank', 'cheque-tna-zeta',
+    'cheque-ref-promedio', 'cheque-ref-avalado', 'cheque-ref-no-garantizado', 'cheque-ref-garantia',
+    'cheque-mav-venta', 'cheque-mav-compra', 'cheque-alyc', 'cheque-iva', 'cheque-icdb',
+    'cheque-comision-banco', 'cheque-aval-sgr', 'cheque-sellos', 'cheque-iva-intereses-aliq'
+  ].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('input', () => {
       if (isChequeMode()) calculateYield();
     });
   });
+  [
+    'cheque-aplicar-compra', 'cheque-iva-intereses', 'cheque-comision-banco-iva', 'cheque-aval-sgr-iva', 'cheque-computo'
+  ].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', () => {
+      if (isChequeMode()) calculateYield();
+    });
+  });
+  const chequeRefs = document.getElementById('cheque-market-refs');
+  if (chequeRefs) {
+    chequeRefs.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-use-input]');
+      if (!button) return;
+      const source = document.getElementById(button.getAttribute('data-use-input'));
+      const zetaTna = document.getElementById('cheque-tna-zeta');
+      if (!source || !zetaTna) return;
+      zetaTna.value = source.value;
+      if (isChequeMode()) calculateYield();
+    });
+  }
 
   const plazoExact = document.getElementById('input-plazo-cheque');
   if (plazoExact) {
@@ -1485,21 +1569,50 @@ function syncChequeMode() {
   }
 }
 
+function seedChequeMarketFallbacks() {
+  if (typeof ZETA_CONFIG === 'undefined') return;
+  if (!ZETA_CONFIG.marketRates.bcra && typeof bcraPanelFromSources === 'function') {
+    ZETA_CONFIG.marketRates.bcra = bcraPanelFromSources(null);
+  }
+  if (!ZETA_CONFIG.marketRates.chequeLecaps && typeof buildChequeLecapQuotes === 'function') {
+    ZETA_CONFIG.marketRates.chequeLecaps = buildChequeLecapQuotes({});
+  }
+}
+
 function getChequeConfig() {
   const cfg = (typeof ZETA_CONFIG !== 'undefined' && ZETA_CONFIG.chequeDiscount) || {};
+  const example = typeof chequeCostoEjemplo === 'function' ? chequeCostoEjemplo() : {};
+  const costos = cfg.costos || {};
+  const refs = cfg.referenciasCheques || {};
   return {
     bankLabel: cfg.bankLabel || 'Banco',
-    bank: {
-      tnaDesc: numberOr(cfg.bank && cfg.bank.tnaDesc, 27.5),
-      derechosPct: numberOr(cfg.bank && cfg.bank.derechosPct, 0.06),
-      tnaArancel: numberOr(cfg.bank && cfg.bank.tnaArancel, 1)
+    bank: { tnaDesc: numberOr(cfg.bank && cfg.bank.tnaDesc, 27.5) },
+    zeta: { tnaDesc: numberOr(cfg.zeta && cfg.zeta.tnaDesc, example.tna || 25.73) },
+    costos: {
+      iva: numberOr(costos.iva, example.iva != null ? example.iva : 0.21),
+      mavVentaPct: numberOr(costos.mavVentaPct, 0.06),
+      mavCompraPct: numberOr(costos.mavCompraPct, 0.03),
+      aplicarCompra: costos.aplicarCompra === true,
+      alycPct: numberOr(costos.alycPct, 0.40),
+      icdbAlicuota: numberOr(costos.icdbAlicuota, 0.006),
+      computoGanancias: numberOr(costos.computoGanancias, 0),
+      ivaIntereses: costos.ivaIntereses === true,
+      ivaInteresesAlicuota: numberOr(costos.ivaInteresesAlicuota, 0.21),
+      comisionBancoPct: numberOr(costos.comisionBancoPct, 0),
+      comisionBancoIva: costos.comisionBancoIva === true,
+      avalSgrPct: numberOr(costos.avalSgrPct, 0),
+      avalSgrIva: costos.avalSgrIva === true,
+      sellosPct: numberOr(costos.sellosPct, 0)
     },
-    zeta: {
-      tnaDesc: numberOr(cfg.zeta && cfg.zeta.tnaDesc, 25.5),
-      derechosPct: numberOr(cfg.zeta && cfg.zeta.derechosPct, 0.05),
-      tnaArancel: numberOr(cfg.zeta && cfg.zeta.tnaArancel, 0.7)
-    },
-    iva: numberOr(cfg.iva, 0.21)
+    referencias: {
+      periodo: refs.periodo || 'septiembre 2026',
+      fuente: refs.fuente || 'VetaCap vía Infobae, 21/10/2026',
+      nota: refs.nota || 'Estos valores se cargan a mano.',
+      promedio: numberOr(refs.promedio, 26.84),
+      avalado: numberOr(refs.avalado, 25.73),
+      noGarantizado: numberOr(refs.noGarantizado, 29.23),
+      garantiaMav: numberOr(refs.garantiaMav, 24.92)
+    }
   };
 }
 
@@ -1530,17 +1643,74 @@ function initChequeControls() {
   if (bankTna) bankTna.value = String(cfg.bank.tnaDesc);
   if (zetaTna) zetaTna.value = String(cfg.zeta.tnaDesc);
 
-  const bankExtras = document.getElementById('cheque-bank-extras');
-  const zetaExtras = document.getElementById('cheque-zeta-extras');
-  if (bankExtras) {
-    bankExtras.textContent = `Derechos ${formatPercentPoints(cfg.bank.derechosPct)} · Arancel ${formatPercentPoints(cfg.bank.tnaArancel)} TNA (config.js)`;
-  }
-  if (zetaExtras) {
-    zetaExtras.textContent = `Derechos ${formatPercentPoints(cfg.zeta.derechosPct)} · Arancel ${formatPercentPoints(cfg.zeta.tnaArancel)} TNA (config.js)`;
+  const costos = cfg.costos;
+  setInputValue('cheque-mav-venta', costos.mavVentaPct);
+  setInputValue('cheque-mav-compra', costos.mavCompraPct);
+  setInputValue('cheque-alyc', costos.alycPct);
+  setInputValue('cheque-iva', Math.round(costos.iva * 1000) / 10);
+  setInputValue('cheque-icdb', Math.round(costos.icdbAlicuota * 10000) / 100);
+  setInputValue('cheque-comision-banco', costos.comisionBancoPct);
+  setInputValue('cheque-aval-sgr', costos.avalSgrPct);
+  setInputValue('cheque-sellos', costos.sellosPct);
+  setInputValue('cheque-iva-intereses-aliq', Math.round(costos.ivaInteresesAlicuota * 1000) / 10);
+  setChecked('cheque-aplicar-compra', costos.aplicarCompra);
+  setChecked('cheque-iva-intereses', costos.ivaIntereses);
+  setChecked('cheque-comision-banco-iva', costos.comisionBancoIva);
+  setChecked('cheque-aval-sgr-iva', costos.avalSgrIva);
+  const computo = document.getElementById('cheque-computo');
+  if (computo) computo.value = String(costos.computoGanancias);
+
+  const refs = cfg.referencias;
+  setInputValue('cheque-ref-promedio', refs.promedio);
+  setInputValue('cheque-ref-avalado', refs.avalado);
+  setInputValue('cheque-ref-no-garantizado', refs.noGarantizado);
+  setInputValue('cheque-ref-garantia', refs.garantiaMav);
+  const note = document.getElementById('cheque-ref-note');
+  if (note) {
+    note.textContent = `${refs.fuente}. ${refs.periodo.charAt(0).toUpperCase()}${refs.periodo.slice(1)}, no es una curva de este mes. ${refs.nota}`;
   }
 
   const plazoExact = document.getElementById('input-plazo-cheque');
   if (plazoExact) plazoExact.value = String(chequePlazoDays);
+}
+
+function setInputValue(id, value) {
+  const el = document.getElementById(id);
+  if (el && document.activeElement !== el) el.value = String(value);
+}
+
+function setChecked(id, checked) {
+  const el = document.getElementById(id);
+  if (el) el.checked = !!checked;
+}
+
+function readCheckbox(id, fallback) {
+  const el = document.getElementById(id);
+  if (!el) return !!fallback;
+  return !!el.checked;
+}
+
+function readChequeCostParams(tna) {
+  const cfg = getChequeConfig().costos;
+  const computoEl = document.getElementById('cheque-computo');
+  const computo = computoEl ? parseFloat(computoEl.value) : cfg.computoGanancias;
+  return {
+    tna,
+    iva: readOptionalNumber('cheque-iva', cfg.iva * 100) / 100,
+    mavVentaPct: readOptionalNumber('cheque-mav-venta', cfg.mavVentaPct),
+    mavCompraPct: readOptionalNumber('cheque-mav-compra', cfg.mavCompraPct),
+    aplicarCompra: readCheckbox('cheque-aplicar-compra', cfg.aplicarCompra),
+    alycPct: readOptionalNumber('cheque-alyc', cfg.alycPct),
+    icdbAlicuota: readOptionalNumber('cheque-icdb', cfg.icdbAlicuota * 100) / 100,
+    computoGanancias: isFinite(computo) && computo >= 0 && computo <= 1 ? computo : 0,
+    ivaIntereses: readCheckbox('cheque-iva-intereses', cfg.ivaIntereses),
+    ivaInteresesAlicuota: readOptionalNumber('cheque-iva-intereses-aliq', cfg.ivaInteresesAlicuota * 100) / 100,
+    comisionBancoPct: readOptionalNumber('cheque-comision-banco', cfg.comisionBancoPct),
+    comisionBancoIva: readCheckbox('cheque-comision-banco-iva', cfg.comisionBancoIva),
+    avalSgrPct: readOptionalNumber('cheque-aval-sgr', cfg.avalSgrPct),
+    avalSgrIva: readCheckbox('cheque-aval-sgr-iva', cfg.avalSgrIva),
+    sellosPct: readOptionalNumber('cheque-sellos', cfg.sellosPct)
+  };
 }
 
 function getChequeScenario() {
@@ -1548,10 +1718,11 @@ function getChequeScenario() {
   const labelInput = document.getElementById('cheque-bank-label');
   const typedLabel = labelInput ? labelInput.value.trim() : '';
   const bankLabel = typedLabel || cfg.bankLabel;
-  const bankRates = { ...cfg.bank, tnaDesc: readOptionalNumber('cheque-tna-bank', cfg.bank.tnaDesc) };
-  const zetaRates = { ...cfg.zeta, tnaDesc: readOptionalNumber('cheque-tna-zeta', cfg.zeta.tnaDesc) };
-  const bank = calcChequeQuote(currentCapital, currentPlazo, bankRates, cfg.iva);
-  const zeta = calcChequeQuote(currentCapital, currentPlazo, zetaRates, cfg.iva);
+  const bankTna = readOptionalNumber('cheque-tna-bank', cfg.bank.tnaDesc);
+  const zetaTna = readOptionalNumber('cheque-tna-zeta', cfg.zeta.tnaDesc);
+  const quoteWith = typeof calcChequeCosto === 'function' ? calcChequeCosto : calcChequeQuote;
+  const bank = quoteWith(currentCapital, currentPlazo, readChequeCostParams(bankTna));
+  const zeta = quoteWith(currentCapital, currentPlazo, readChequeCostParams(zetaTna));
 
   let conviene = 'No comparable';
   let winner = null;
@@ -1596,17 +1767,9 @@ function renderChequeExperience() {
     ].join('');
   }
 
-  const winnerQuote = scenario.winner === 'banco' ? scenario.bank : scenario.zeta;
-  const winnerName = scenario.winner === 'banco'
-    ? scenario.bankLabel
-    : (scenario.winner === 'empate' ? 'Empate' : 'Propuesta Zeta');
-
-  setText('cheque-hero-cft', scenario.winner === 'empate'
-    ? formatRatioPct(scenario.zeta.cftEfectivo)
-    : formatRatioPct(winnerQuote.cftEfectivo));
-  setText('cheque-hero-subtitle', scenario.winner === 'empate'
-    ? 'Mismo CFT efectivo. El indicador para comparar las dos propuestas.'
-    : `${winnerName} · indicador para comparar las dos propuestas.`);
+  setText('cheque-hero-cft', formatMoneyARS(scenario.zeta.montoRecibido));
+  setText('cheque-hero-subtitle', 'Propuesta Zeta, después de los costos cargados.');
+  setText('cheque-hero-rates', `TNA ${formatPercentPoints(scenario.zeta.tnaCostoPct)} · TEA ${formatPercentPoints(scenario.zeta.teaCostoPct)}`);
   setText('cheque-winner-badge', scenario.conviene === 'Empate' || scenario.conviene === 'No comparable'
     ? scenario.conviene
     : `Conviene ${scenario.conviene}`);
@@ -1630,8 +1793,10 @@ function renderChequeExperience() {
   setText('modal-instrumento', 'Descuento de cheques');
   setText('modal-capital-plazo', `${formatMoneyARS(scenario.monto)} • ${scenario.plazo}d`);
   setText('modal-ganancia-label', 'Conviene');
-  const pct = scenario.winner === 'banco' ? scenario.bank.cftEfectivoPct : scenario.zeta.cftEfectivoPct;
-  setText('modal-ganancia', pct == null ? scenario.conviene : `${scenario.conviene} · ${formatPercentPoints(pct)}`);
+  const pct = scenario.zeta.tnaCostoPct;
+  setText('modal-ganancia', pct == null ? scenario.conviene : `${scenario.conviene} · TNA ${formatPercentPoints(pct)}`);
+  renderChequeMarketContext(scenario);
+  renderChequeWait(scenario);
 }
 
 function renderChequeSideCard(key, title, quote, scenario) {
@@ -1655,26 +1820,207 @@ function renderChequeSideCard(key, title, quote, scenario) {
         ${badge}
       </div>
       <div class="space-y-1.5 text-xs">
-        ${chequeMoneyRow('Descuento financiero', quote.descuentoFinanciero)}
-        ${chequeMoneyRow('Derechos de mercado + IVA', quote.derechosIva)}
-        ${chequeMoneyRow('Arancel + IVA', quote.arancelIva)}
+        ${chequeMoneyRow('Interés de la tasa pactada', quote.interes)}
+        ${chequeMoneyRow('Derecho MAV venta + IVA', quote.mavVenta)}
+        ${quote.mavCompra > 0 ? chequeMoneyRow('Derecho MAV compra + IVA', quote.mavCompra) : ''}
+        ${chequeMoneyRow('Arancel ALyC + IVA', quote.alyc)}
+        ${quote.ivaInteresesPesos > 0 ? chequeMoneyRow('IVA sobre intereses', quote.ivaInteresesPesos) : ''}
+        ${quote.comisionBanco > 0 ? chequeMoneyRow('Comisión bancaria', quote.comisionBanco) : ''}
+        ${quote.avalSgr > 0 ? chequeMoneyRow('Aval SGR', quote.avalSgr) : ''}
+        ${quote.sellos > 0 ? chequeMoneyRow('Sellos', quote.sellos) : ''}
+        ${chequeMoneyRow('Impuesto créd/déb', quote.icdbNeto)}
         ${chequeMoneyRow('Total costos', quote.totalCostos, true)}
       </div>
       <div class="mt-3 rounded-xl ${won ? 'bg-emerald-500/15' : 'bg-slate-800/80'} px-3 py-2.5 flex items-center justify-between gap-2">
-        <span class="text-[11px] font-bold uppercase tracking-wide ${won ? 'text-emerald-200' : 'text-slate-300'}">Monto recibido</span>
-        <span class="font-mono font-bold ${won ? 'text-emerald-300' : 'text-white'} text-sm text-right">${formatMoneyARS(quote.montoRecibido)}</span>
+        <span class="text-[11px] font-bold uppercase tracking-wide ${won ? 'text-emerald-200' : 'text-slate-300'}">Líquido a cobrar</span>
+        <span class="font-mono font-bold ${won ? 'text-emerald-300' : 'text-white'} text-sm text-right">${formatMoneyARS(quote.liquido)}</span>
       </div>
       <div class="mt-3 space-y-1.5 text-xs">
-        ${chequePctRow('Costo del período', quote.costoPeriodo)}
-        ${chequePctRow('CFT nominal anual', quote.cftNominal)}
+        ${chequePctPointsRow('Costo efectivo TNA', quote.tnaCostoPct)}
+        ${chequePctPointsRow('Costo efectivo TEA', quote.teaCostoPct)}
+        ${chequePctPointsRow('TNA sin impuesto al cheque', quote.tnaSinIcdbPct)}
       </div>
       <div class="mt-3 pt-3 border-t border-slate-800/80">
-        <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500">CFT efectivo anual</p>
-        <p class="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight ${cftClass}">${formatRatioPct(quote.cftEfectivo)}</p>
-        <p class="text-[10px] text-slate-500">Indicador para comparar</p>
+        <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Costo efectivo TEA</p>
+        <p class="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight ${cftClass}">${formatPercentPoints(quote.teaCostoPct)}</p>
+        <p class="text-[10px] text-slate-500">TNA ${formatPercentPoints(quote.tnaCostoPct)} · tasa pactada ${formatPercentPoints(quote.tnaDesc)}</p>
       </div>
     </article>
   `;
+}
+
+function formatIsoDateAr(iso) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+  if (!match) return iso ? String(iso) : '';
+  return `${match[3]}/${match[2]}/${match[1]}`;
+}
+
+function renderChequeMarketContext(scenario) {
+  const list = document.getElementById('cheque-bcra-list');
+  const status = document.getElementById('cheque-bcra-status');
+  const ceiling = document.getElementById('cheque-ceiling-note');
+  const panel = (ZETA_CONFIG.marketRates && ZETA_CONFIG.marketRates.bcra) || null;
+  if (status) {
+    if (!panel) {
+      status.textContent = '';
+    } else if (panel.status === 'bcra') {
+      status.textContent = 'BCRA en vivo';
+      status.className = 'text-[10px] text-emerald-300 text-right';
+    } else if (panel.status === 'parcial') {
+      status.textContent = 'Parte en vivo. El resto es el último valor cargado.';
+      status.className = 'text-[10px] text-amber-300 text-right';
+    } else {
+      const when = formatIsoDateAr(panel.asOf);
+      status.textContent = when
+        ? `Último valor cargado (${when}). El BCRA no respondió.`
+        : 'Último valor cargado. El BCRA no respondió.';
+      status.className = 'text-[10px] text-amber-300 text-right';
+    }
+  }
+  if (list) {
+    const series = (panel && panel.series) || [];
+    list.innerHTML = series.map((row) => {
+      const value = row.unit === 'millones'
+        ? `${formatNumber(Math.round(row.valor))} mill.`
+        : formatPercentPoints(row.valor);
+      const when = formatIsoDateAr(row.fecha);
+      const stale = row.stale ? ' · último valor cargado' : '';
+      const hint = row.hint ? ` · ${row.hint}` : '';
+      return `<div class="flex items-baseline justify-between gap-3 text-[11px]">
+        <span class="text-slate-400 min-w-0">${escapeHtml(row.label)}<span class="text-slate-500">${escapeHtml(hint)}</span></span>
+        <span class="font-mono text-slate-200 text-right shrink-0">${value}<span class="block text-[10px] text-slate-500 font-sans">BCRA ${row.id} · ${escapeHtml(when)}${stale}</span></span>
+      </div>`;
+    }).join('');
+  }
+  if (ceiling) {
+    const sola = panel && typeof bcraSeriesByKey === 'function' ? bcraSeriesByKey(panel, 'solaFirma') : null;
+    const zetaTna = scenario.zeta && scenario.zeta.tnaDesc;
+    const bankTna = scenario.bank && scenario.bank.tnaDesc;
+    const top = Math.max(numberOr(zetaTna, 0), numberOr(bankTna, 0));
+    if (sola && sola.valor != null && top > sola.valor + 0.05) {
+      ceiling.classList.remove('hidden');
+      ceiling.textContent = `La tasa ingresada supera los documentos a sola firma del BCRA (${formatPercentPoints(sola.valor)} al ${formatIsoDateAr(sola.fecha)}), que acá se usan como techo de referencia.`;
+    } else {
+      ceiling.classList.add('hidden');
+      ceiling.textContent = '';
+    }
+  }
+}
+
+function chequeCaucionQuotes() {
+  const live = ZETA_CONFIG.marketRates && ZETA_CONFIG.marketRates.caucionQuotes;
+  if (Array.isArray(live) && live.length) return live;
+  if (typeof caucionQuotesFromBuckets === 'function') {
+    return caucionQuotesFromBuckets(ZETA_CONFIG.marketRates && ZETA_CONFIG.marketRates.caucionByDays);
+  }
+  return [];
+}
+
+function renderChequeWait(scenario) {
+  const intro = document.getElementById('cheque-wait-intro');
+  const body = document.getElementById('cheque-wait-body');
+  if (!body) return;
+  const quote = scenario.zeta;
+  if (intro) {
+    intro.textContent = `Para la propuesta Zeta el costo es ${formatPercentPoints(quote.tnaCostoPct)} TNA y ${formatPercentPoints(quote.teaCostoPct)} TEA. El líquido es ${formatMoneyARS(quote.liquido)}. Si ese líquido se coloca a la TNA de cada alternativa durante los ${scenario.plazo} días del cheque, se compara contra cobrar el nominal al vencimiento.`;
+  }
+  const rows = [];
+  const caucion = typeof pickClosestByDays === 'function'
+    ? pickClosestByDays(scenario.plazo, chequeCaucionQuotes())
+    : null;
+  const caucionViva = caucion && caucion.fuente !== 'config';
+  rows.push(renderWaitAlternative({
+    title: 'Caución',
+    pick: caucion,
+    quote,
+    plazo: scenario.plazo,
+    nominal: scenario.monto,
+    sourceLine: !caucion
+      ? 'Sin caución cargada.'
+      : (caucionViva
+        ? `BYMA · plazo ${caucion.days} días · TNA ${formatPercentPoints(caucion.tna)}${caucion.days !== scenario.plazo ? '. No hay caución al plazo exacto: se usa esta TNA sobre los días del cheque.' : '.'}`
+        : `Respaldo cargado, balde de ${caucion.days} días, TNA ${formatPercentPoints(caucion.tna)}. BYMA no trajo una curva en esta carga${caucion.days !== scenario.plazo ? '. No coincide con el plazo del cheque: se usa esta TNA sobre esos días.' : '.'}`)
+  }));
+
+  const pf = ZETA_CONFIG.marketRates && typeof bcraSeriesByKey === 'function'
+    ? bcraSeriesByKey(ZETA_CONFIG.marketRates.bcra, 'pf30')
+    : null;
+  const pfTna = pf && pf.valor != null ? pf.valor : (ZETA_CONFIG.marketRates && ZETA_CONFIG.marketRates.plazoFijoTNA);
+  const pfStale = pf ? pf.stale : true;
+  const pfWhen = pf && pf.fecha ? formatIsoDateAr(pf.fecha) : '';
+  rows.push(renderWaitAlternative({
+    title: 'Plazo fijo',
+    pick: pfTna == null ? null : { days: 30, tna: pfTna, stale: pfStale },
+    quote,
+    plazo: scenario.plazo,
+    nominal: scenario.monto,
+    sourceLine: pf
+      ? `BCRA serie ${pf.id}${pfWhen ? ' · dato del ' + pfWhen : ''}${pf.stale ? ' · último valor cargado' : ''}. Es la tasa a 30 días, aplicada al plazo del cheque.`
+      : `Tasa de respaldo ${formatPercentPoints(pfTna)}, aplicada al plazo del cheque.`
+  }));
+
+  const lecaps = (ZETA_CONFIG.marketRates && ZETA_CONFIG.marketRates.chequeLecaps) || null;
+  const letters = (lecaps && lecaps.letters) || [];
+  const letter = typeof pickClosestByDays === 'function' ? pickClosestByDays(scenario.plazo, letters) : null;
+  const flujo = (lecaps && lecaps.flujoNota) || 'Los pagos finales no están confirmados con la Secretaría de Finanzas.';
+  const lecapStatus = !lecaps
+    ? 'Sin letras cargadas.'
+    : (lecaps.status === 'data912'
+      ? 'Precio Data912. El pago final sigue sin confirmación oficial.'
+      : (lecaps.status === 'mixto'
+        ? `Data912 no trajo precio para todas. Las que faltan quedan con la foto del ${formatIsoDateAr(lecaps.asOf || '2026-10-28')}.`
+        : `Data912 no respondió. Último valor cargado${lecaps.asOf ? ' el ' + formatIsoDateAr(lecaps.asOf) : ''}.`));
+  rows.push(renderWaitAlternative({
+    title: letter ? `LECAP/Boncap ${letter.ticker}` : 'LECAP/Boncap',
+    pick: letter,
+    quote,
+    plazo: scenario.plazo,
+    nominal: scenario.monto,
+    sourceLine: letter
+      ? `${letter.ticker} · ${letter.days} días · TNA ${formatPercentPoints(letter.tna)} · TEA ${formatPercentPoints(letter.tea)}${letter.stale ? ' · foto' : ''}. ${letter.days !== scenario.plazo ? 'No vence en el plazo del cheque: la comparación de pesos usa su TNA sobre esos días. ' : ''}${flujo} ${lecapStatus}`
+      : lecapStatus
+  }));
+
+  const curve = letters.map((row) => {
+    const mark = letter && row.ticker === letter.ticker ? ' text-violet-200' : '';
+    return `<span class="inline-block mr-2${mark}">${escapeHtml(row.ticker)} ${formatPercentPoints(row.tna)}/${formatPercentPoints(row.tea)}${row.stale ? '*' : ''}</span>`;
+  }).join('');
+  if (curve) {
+    const staleNote = letters.some((row) => row.stale) ? '* foto del último valor cargado. ' : '';
+    rows.push(`<p class="text-[10px] leading-relaxed text-slate-500">Curva TNA/TEA: ${curve}<span class="block mt-1">${staleNote}${escapeHtml(flujo)}</span></p>`);
+  }
+  body.innerHTML = rows.join('');
+}
+
+function renderWaitAlternative(spec) {
+  const pick = spec.pick;
+  const verdict = typeof waitVerdict === 'function'
+    ? waitVerdict(spec.quote && spec.quote.tnaCosto, pick && pick.tna, spec.title)
+    : { kind: 'sin_dato', texto: 'Sin comparación.', diff: null };
+  const tone = verdict.kind === 'mas_caro'
+    ? 'text-amber-200'
+    : (verdict.kind === 'mas_barato' ? 'text-emerald-300' : 'text-slate-300');
+  let pesos = '';
+  if (pick && typeof sameTermPlacement === 'function' && spec.quote && spec.quote.liquido > 0) {
+    const placed = sameTermPlacement(spec.quote.liquido, spec.nominal, spec.plazo, pick.tna);
+    if (placed) {
+      const gap = placed.diferencia;
+      const tail = gap > 0.5
+        ? `Esperar el cheque deja ${formatMoneyARS(gap)} más.`
+        : (gap < -0.5
+          ? `Descontar y colocar deja ${formatMoneyARS(Math.abs(gap))} más que esperar el cheque.`
+          : 'Al vencimiento del cheque las dos vías quedan parejas.');
+      pesos = `<p class="text-[11px] text-slate-400 mt-1">Colocar el líquido a esa TNA llega a ${formatMoneyARS(placed.colocado)}. El cheque paga ${formatMoneyARS(spec.nominal)}. ${tail}</p>`;
+    }
+  }
+  const diff = verdict.diff == null
+    ? ''
+    : ` · ${verdict.diff > 0 ? '+' : ''}${verdict.diff.toFixed(2).replace('.', ',')} puntos de TNA`;
+  return `<article class="rounded-xl border border-slate-800 px-3 py-2">
+    <p class="text-[11px] font-semibold ${tone}">${escapeHtml(verdict.texto)}${diff}</p>
+    <p class="text-[10px] leading-relaxed text-slate-500 mt-1">${escapeHtml(spec.sourceLine || '')}</p>
+    ${pesos}
+  </article>`;
 }
 
 function chequeMoneyRow(label, amount, strong) {
@@ -2448,7 +2794,11 @@ function buildLeadPayload(contact) {
       tnaZeta: scenario.zeta.tnaDesc,
       tna: scenario.zeta.tnaDesc,
       rendimiento: Math.round(scenario.zeta.montoRecibido - scenario.bank.montoRecibido),
-      resumen: `Descuento de cheques · ${scenario.bankLabel} CFT ef. ${formatRatioPct(scenario.bank.cftEfectivo)} · Zeta CFT ef. ${formatRatioPct(scenario.zeta.cftEfectivo)} · Conviene: ${scenario.conviene}`
+      liquidoZeta: roundMoney(scenario.zeta.liquido),
+      tnaCostoZeta: scenario.zeta.tnaCostoPct,
+      teaCostoZeta: scenario.zeta.teaCostoPct,
+      tnaSinIcdbZeta: scenario.zeta.tnaSinIcdbPct,
+      resumen: `Descuento de cheques · ${scenario.bankLabel} TNA costo ${formatPercentPoints(scenario.bank.tnaCostoPct)} · Zeta líquido ${formatMoneyARS(scenario.zeta.liquido)} · TNA ${formatPercentPoints(scenario.zeta.tnaCostoPct)} · TEA ${formatPercentPoints(scenario.zeta.teaCostoPct)} · Conviene: ${scenario.conviene}`
     };
   }
 

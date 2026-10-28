@@ -409,7 +409,7 @@
                     <span class="block text-xs font-bold leading-snug">Descuento de cheques</span>
                     <span class="mt-1 inline-block text-[10px] font-mono font-bold text-violet-300 bg-violet-950 px-1.5 py-0.5 rounded">Banco vs Zeta</span>
                   </div>
-                  <p class="text-[11px] text-slate-400">CFT efectivo con detalle impositivo</p>
+                  <p class="text-[11px] text-slate-400">Costo efectivo y si conviene esperar</p>
                 </button>
 
                 <button onclick="selectInstrument('macroLetra')" id="btn-inst-macro-letra" class="sm:col-span-2 p-3.5 rounded-2xl border text-left transition relative bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700 min-w-0">
@@ -478,11 +478,11 @@
             </div>
             </div>
 
-            <!-- Tasas de cheques: el default sale de config.js; la TNA se puede pisar en la reunión -->
-            <div id="cheque-rate-overrides" class="hidden mt-4 pt-4 border-t border-slate-800 space-y-3">
+            <!-- Tasas de cheques: la pactada se edita acá; las de mercado de septiembre se cargan a mano -->
+            <div id="cheque-rate-overrides" class="hidden mt-4 pt-4 border-t border-slate-800 space-y-4">
               <p class="text-xs text-slate-400 leading-relaxed">
-                Tasas de ejemplo. Derechos, arancel e IVA salen de <span class="font-mono text-slate-300">config.js</span> y ya están en esta cuenta. No se suma la comisión de letras, de caución ni del FCI.
-                El nombre del banco y la TNA de descuento se pueden ajustar solo para esta simulación.
+                La tasa que se tipea es la pactada del descuento. Al lado están las referencias de septiembre y las del BCRA.
+                Los costos de abajo se comparten entre el banco y Zeta. No se suma la comisión de letras, de caución ni del FCI.
               </p>
               <div>
                 <label for="cheque-bank-label" class="block text-xs font-semibold text-slate-300 mb-1.5">Nombre del banco</label>
@@ -508,7 +508,6 @@
                     >
                     <span class="text-xs font-bold text-slate-400">%</span>
                   </div>
-                  <p id="cheque-bank-extras" class="text-[10px] text-slate-500 mt-1.5"></p>
                 </div>
                 <div>
                   <label for="cheque-tna-zeta" class="block text-xs font-semibold text-slate-300 mb-1.5">TNA descuento Zeta</label>
@@ -523,9 +522,139 @@
                     >
                     <span class="text-xs font-bold text-slate-400">%</span>
                   </div>
-                  <p id="cheque-zeta-extras" class="text-[10px] text-slate-500 mt-1.5"></p>
                 </div>
               </div>
+              <p id="cheque-ceiling-note" class="hidden text-[11px] leading-relaxed text-amber-200"></p>
+
+              <div id="cheque-market-refs" class="rounded-2xl border border-slate-800 bg-slate-950/40 p-3 space-y-3">
+                <div>
+                  <p class="text-[11px] font-semibold text-slate-200">Tasas de cheques MAV · septiembre 2026</p>
+                  <p id="cheque-ref-note" class="text-[10px] leading-relaxed text-slate-500 mt-1"></p>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label for="cheque-ref-promedio" class="block text-[10px] font-semibold text-slate-400 mb-1">Promedio</label>
+                    <input id="cheque-ref-promedio" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
+                  </div>
+                  <div>
+                    <label for="cheque-ref-avalado" class="block text-[10px] font-semibold text-slate-400 mb-1">Avalado</label>
+                    <div class="flex gap-1">
+                      <input id="cheque-ref-avalado" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
+                      <button type="button" data-use-input="cheque-ref-avalado" class="shrink-0 px-2 rounded-lg border border-violet-500/40 text-[10px] font-semibold text-violet-200">Usar</button>
+                    </div>
+                  </div>
+                  <div>
+                    <label for="cheque-ref-no-garantizado" class="block text-[10px] font-semibold text-slate-400 mb-1">No garantizado</label>
+                    <div class="flex gap-1">
+                      <input id="cheque-ref-no-garantizado" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
+                      <button type="button" data-use-input="cheque-ref-no-garantizado" class="shrink-0 px-2 rounded-lg border border-violet-500/40 text-[10px] font-semibold text-violet-200">Usar</button>
+                    </div>
+                  </div>
+                  <div>
+                    <label for="cheque-ref-garantia" class="block text-[10px] font-semibold text-slate-400 mb-1">Con garantía MAV</label>
+                    <div class="flex gap-1">
+                      <input id="cheque-ref-garantia" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
+                      <button type="button" data-use-input="cheque-ref-garantia" class="shrink-0 px-2 rounded-lg border border-violet-500/40 text-[10px] font-semibold text-violet-200">Usar</button>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" data-use-input="cheque-ref-promedio" class="text-[10px] font-semibold text-violet-300">Usar el promedio en la TNA de Zeta</button>
+
+                <div class="pt-2 border-t border-slate-800 space-y-1.5">
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="text-[11px] font-semibold text-slate-200">Referencias BCRA</p>
+                    <p id="cheque-bcra-status" class="text-[10px] text-slate-500 text-right"></p>
+                  </div>
+                  <div id="cheque-bcra-list" class="space-y-1"></div>
+                </div>
+              </div>
+
+              <div class="rounded-2xl border border-slate-800 bg-slate-950/40 p-3 space-y-3">
+                <p class="text-[11px] font-semibold text-slate-200">Costos del descuento</p>
+                <p class="text-[10px] leading-relaxed text-slate-500">
+                  Porcentajes editables. Los que dicen <span class="text-amber-300">a confirmar</span> no están cerrados: el valor de arriba es un parámetro, no un dato definitivo.
+                  El derecho MAV y el arancel Rosval sí están publicados.
+                </p>
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <div>
+                    <label for="cheque-mav-venta" class="block text-[10px] font-semibold text-slate-400 mb-1">MAV venta, anual</label>
+                    <input id="cheque-mav-venta" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
+                  </div>
+                  <div>
+                    <label for="cheque-mav-compra" class="block text-[10px] font-semibold text-slate-400 mb-1">MAV compra, anual</label>
+                    <input id="cheque-mav-compra" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
+                  </div>
+                  <div>
+                    <label for="cheque-alyc" class="block text-[10px] font-semibold text-slate-400 mb-1">Arancel ALyC, anual</label>
+                    <input id="cheque-alyc" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
+                  </div>
+                  <div>
+                    <label for="cheque-iva" class="block text-[10px] font-semibold text-slate-400 mb-1">IVA de esos costos</label>
+                    <input id="cheque-iva" type="number" min="0" step="0.1" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
+                  </div>
+                  <div>
+                    <label for="cheque-icdb" class="block text-[10px] font-semibold text-slate-400 mb-1">Impuesto créd/déb <span class="text-amber-300">a confirmar</span></label>
+                    <input id="cheque-icdb" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
+                  </div>
+                  <div>
+                    <label for="cheque-comision-banco" class="block text-[10px] font-semibold text-slate-400 mb-1">Comisión bancaria, anual <span class="text-amber-300">a confirmar</span></label>
+                    <input id="cheque-comision-banco" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
+                  </div>
+                  <div>
+                    <label for="cheque-aval-sgr" class="block text-[10px] font-semibold text-slate-400 mb-1">Aval SGR, anual <span class="text-amber-300">a confirmar</span></label>
+                    <input id="cheque-aval-sgr" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
+                  </div>
+                  <div>
+                    <label for="cheque-sellos" class="block text-[10px] font-semibold text-slate-400 mb-1">Sellos sobre VN <span class="text-amber-300">a confirmar</span></label>
+                    <input id="cheque-sellos" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
+                  </div>
+                  <div>
+                    <label for="cheque-iva-intereses-aliq" class="block text-[10px] font-semibold text-slate-400 mb-1">IVA sobre intereses <span class="text-amber-300">a confirmar</span></label>
+                    <input id="cheque-iva-intereses-aliq" type="number" min="0" step="0.1" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
+                  </div>
+                </div>
+                <label class="flex items-start gap-2 text-[11px] text-slate-300 leading-snug">
+                  <input id="cheque-aplicar-compra" type="checkbox" class="mt-0.5 accent-violet-500">
+                  <span>Sumar el derecho de compra MAV al vendedor. Por defecto lo paga el comprador.</span>
+                </label>
+                <label class="flex items-start gap-2 text-[11px] text-slate-300 leading-snug">
+                  <input id="cheque-iva-intereses" type="checkbox" class="mt-0.5 accent-violet-500">
+                  <span>Sumar IVA sobre el interés del descuento. Apagado: la alícuota está a confirmar.</span>
+                </label>
+                <label class="flex items-start gap-2 text-[11px] text-slate-300 leading-snug">
+                  <input id="cheque-comision-banco-iva" type="checkbox" class="mt-0.5 accent-violet-500">
+                  <span>Sumar IVA a la comisión bancaria.</span>
+                </label>
+                <label class="flex items-start gap-2 text-[11px] text-slate-300 leading-snug">
+                  <input id="cheque-aval-sgr-iva" type="checkbox" class="mt-0.5 accent-violet-500">
+                  <span>Sumar IVA al aval SGR.</span>
+                </label>
+                <div>
+                  <label for="cheque-computo" class="block text-[10px] font-semibold text-slate-400 mb-1">Cómputo del impuesto contra Ganancias</label>
+                  <select id="cheque-computo" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white text-xs outline-none focus:border-violet-500">
+                    <option value="0">Sin computar</option>
+                    <option value="0.33">General, 33%</option>
+                    <option value="1">Micro y pequeñas, 100%</option>
+                    <option value="0.6">Industria mediana tramo 1, 60%</option>
+                  </select>
+                </div>
+                <p class="text-[10px] leading-relaxed text-slate-500">
+                  MAV: venta 0,06% + IVA y compra 0,03% + IVA, anuales, sobre el importe descontado.
+                  Arancel 0,40% + IVA anual sobre el VN (Rosval, junio 2026).
+                  El impuesto al cheque, el IVA del interés, la comisión bancaria, el aval SGR y los sellos de Salta están a confirmar.
+                  En Salta, una fuente secundaria exime los cheques de plaza a plaza (art. 276 inc. 17 del Código Fiscal). El echeq no tiene norma específica confirmada: el default de sellos es 0.
+                  El cómputo contra Ganancias está publicado por ARCA.
+                </p>
+              </div>
+
+              <p class="text-[11px] leading-relaxed text-slate-500">
+                Antes de tomar el cheque se puede consultar la Central de cheques denunciados del BCRA.
+                <a href="https://www.bcra.gob.ar/apis-banco-central/" target="_blank" rel="noopener noreferrer" class="text-violet-300 underline underline-offset-2">API pública del BCRA</a>.
+                Esta pantalla no la consulta.
+              </p>
+              <p class="text-[11px] leading-relaxed text-slate-500">
+                Datos de referencia para comparar. No son asesoramiento financiero ni impositivo.
+              </p>
             </div>
 
             <div id="macro-rate-overrides" class="hidden mt-4 pt-4 border-t border-slate-800 space-y-3">
@@ -640,10 +769,15 @@
               <i data-lucide="scale" class="w-4 h-4 text-violet-400"></i>
               <span>Banco vs Propuesta Zeta</span>
             </h4>
-            <p class="text-[11px] text-slate-500 mb-4">Tasas de ejemplo. No se actualizan con el mercado.</p>
+            <p class="text-[11px] text-slate-500 mb-4">Misma plata y mismos días. El costo efectivo incluye la tasa pactada y los gastos cargados.</p>
             <div id="cheque-comparison-grid" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+            <div id="cheque-wait-card" class="mt-4 rounded-2xl border border-slate-800 bg-slate-950/40 p-3 space-y-3">
+              <p class="text-[11px] font-semibold text-slate-200">Descontar o esperar el mismo plazo</p>
+              <p id="cheque-wait-intro" class="text-[11px] leading-relaxed text-slate-400"></p>
+              <div id="cheque-wait-body" class="space-y-2"></div>
+            </div>
             <p class="mt-4 text-[11px] text-slate-500 leading-relaxed">
-              Simulación orientativa, no es consejo de inversión. Zeta Finance CNV 2103.
+              Datos de referencia para comparar. No son asesoramiento financiero ni impositivo. Zeta Finance CNV 2103.
             </p>
           </div>
 
@@ -676,11 +810,12 @@
           <div id="cheque-result-stack" class="hidden">
             <div class="bg-gradient-to-br from-violet-950/80 via-slate-900 to-slate-900 border-2 border-violet-500/40 rounded-3xl p-6 sm:p-8 shadow-2xl">
               <div class="flex items-center justify-between gap-2 mb-2">
-                <span class="text-xs font-bold tracking-wider uppercase text-violet-300">CFT efectivo anual</span>
+                <span class="text-xs font-bold tracking-wider uppercase text-violet-300">Líquido a cobrar con Zeta</span>
                 <span id="cheque-winner-badge" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Conviene</span>
               </div>
               <div id="cheque-hero-cft" class="text-4xl sm:text-5xl font-extrabold text-emerald-400 font-mono tracking-tight">—</div>
-              <p id="cheque-hero-subtitle" class="text-xs text-slate-400 mt-2 mb-6">Indicador para comparar las dos propuestas.</p>
+              <p id="cheque-hero-subtitle" class="text-xs text-slate-400 mt-2">Costo efectivo de la propuesta Zeta.</p>
+              <p id="cheque-hero-rates" class="text-sm font-mono text-violet-200 mt-1 mb-6">—</p>
               <div class="space-y-3 pt-4 border-t border-slate-800 text-sm">
                 <div class="flex justify-between gap-3">
                   <span class="text-slate-400">Monto del cheque</span>
@@ -705,7 +840,7 @@
                   <span>Armar propuesta de descuento</span>
                 </button>
                 <p class="text-center text-[11px] text-slate-400 mt-2">
-                  Simulación orientativa, no es consejo de inversión. Zeta Finance CNV 2103.
+                  Datos de referencia. No es asesoramiento financiero ni impositivo. Zeta Finance CNV 2103.
                 </p>
               </div>
             </div>
@@ -953,6 +1088,7 @@
 
   <script src="config.js"></script>
   <script src="cheque-discount.js"></script>
+  <script src="cheque-market.js"></script>
   <script src="caucion-buckets.js"></script>
   <script src="lecap-yields.js"></script>
   <script src="macro-vs-letra.js"></script>

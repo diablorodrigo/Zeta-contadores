@@ -18,9 +18,12 @@
  *    T+0, pesos). La TNA sale de la cuotaparte CNV vía ArgentinaDatos,
  *    ventana de 7 días corridos. Si falla, queda el respaldo de este archivo.
  * 6. Tasa corporativa en dólares (5% fija).
+ * 7. Referencias del descuento de cheques: series BCRA v4.0 (sin clave) y
+ *    TNA/TEA de LECAP/Boncap con precio Data912 y pago final de terceros.
+ *    Si el BCRA o Data912 no responden, la respuesta trae la última foto
+ *    fechada. Las tasas de cheques de septiembre no salen de esta función.
  *
  * Los baldes de caución sin fila viva no se inventan: quedan en el fallback.
- * El descuento de cheques no se toca: sigue en config.js.
  * Cache: 30 minutos (1800 segundos).
  */
 
@@ -43,15 +46,22 @@ import {
   tradableLecaps
 } from '../lecap-yields.js';
 import { tnaFromCuotapartes } from '../broker-costs.js';
+import {
+  parseBcraMonetarias,
+  bcraPanelFromSources,
+  buildChequeLecapQuotes
+} from '../cheque-market.js';
 
 const BYMA_CAUCIONES_URL = 'https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/cauciones';
 const BYMA_LEBACS_URL = 'https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/lebacs';
 const BYMA_FICHA_URL = 'https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/bnown/fichatecnica/especies/general';
 const DATA912_NOTES_URL = 'https://data912.com/live/arg_notes';
+const DATA912_BONDS_URL = 'https://data912.com/live/arg_bonds';
 const ARGENTINA_DATOS_CAUCIONES_URL = 'https://api.argentinadatos.com/v1/finanzas/cauciones/ars';
 const DEPOSITOS_30_URL = 'https://api.argentinadatos.com/v1/finanzas/tasas/depositos30Dias';
 const PLAZO_FIJO_ENTIDADES_URL = 'https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo';
 const FCI_HISTORICO_URL = 'https://api.argentinadatos.com/v1/finanzas/fci/fondos/balanz-capital-money-market-clase-a/historico';
+const BCRA_MONETARIAS_URL = 'https://api.bcra.gob.ar/estadisticas/v4.0/monetarias?limit=3000';
 const FCI_NOMBRE = 'Balanz Capital Money Market - Clase A';
 
 export default async function handler(req, res) {
@@ -98,23 +108,34 @@ export default async function handler(req, res) {
       vcpInicio: 12676.343,
       plazoRescateDias: 0,
       fuente: 'config'
-    }
+    },
+    bcra: bcraPanelFromSources(null),
+    chequeLecaps: buildChequeLecapQuotes({}),
+    caucionQuotes: []
   };
 
   try {
     const liveRates = { ...fallbackRates, caucionByDays: { ...fallbackRates.caucionByDays } };
     const sourcesChecked = [];
 
-    const [bymaRows, argentinaRows, depositos, entidades, lecapCurve, fciQuote] = await Promise.all([
+    const [bymaRows, argentinaRows, depositos, entidades, lecapCurve, fciQuote, bcraPayload] = await Promise.all([
       fetchBymaCaucionesArs(),
       fetchJson(ARGENTINA_DATOS_CAUCIONES_URL, 3500),
       fetchJson(DEPOSITOS_30_URL, 3500),
       fetchJson(PLAZO_FIJO_ENTIDADES_URL, 3500),
       loadLecapCurve(),
-      loadFciQuote()
+      loadFciQuote(),
+      fetchJson(BCRA_MONETARIAS_URL, 5000)
     ]);
 
     const bymaQuotes = quotesFromBymaRows(bymaRows);
+    if (bymaQuotes.length) {
+      liveRates.caucionQuotes = bymaQuotes.map((quote) => ({
+        days: quote.days,
+        tna: quote.tna,
+        volume: quote.volume
+      }));
+    }
     const bymaCurve = bucketCaucionQuotes(bymaQuotes, fallbackRates.caucionByDays);
     if (bymaCurve.filledBuckets > 0) {
       liveRates.caucionByDays = bymaCurve.caucionByDays;
@@ -137,6 +158,12 @@ export default async function handler(req, res) {
         liveRates.plazoFijoTNA = parseFloat(tnaPf.toFixed(1));
         sourcesChecked.push('plazofijo_live');
       }
+    }
+
+    const bcraPanel = bcraPanelFromSources(parseBcraMonetarias(bcraPayload));
+    liveRates.bcra = bcraPanel;
+    if (bcraPanel.status === 'bcra' || bcraPanel.status === 'parcial') {
+      sourcesChecked.push('bcra');
     }
 
     const macroBands = macroBandsFromArgentinaDatos(entidades);
@@ -252,6 +279,12 @@ async function fetchJson(url, timeoutMs) {
 }
 
 function applyLecapCurve(liveRates, curve, sourcesChecked) {
+  if (curve && curve.chequeLecaps) {
+    liveRates.chequeLecaps = curve.chequeLecaps;
+    if (curve.chequeLecaps.status === 'data912' || curve.chequeLecaps.status === 'mixto') {
+      sourcesChecked.push('cheque_lecap_data912');
+    }
+  }
   if (!curve || !curve.reference) {
     const calendar = quoteCalendar(new Date());
     const menu = tradableLecaps(LECAP_CONFIG_FALLBACK, new Date());
@@ -290,12 +323,15 @@ function applyLecapCurve(liveRates, curve, sourcesChecked) {
 async function loadLecapCurve() {
   try {
     const known = Object.keys(LECAP_VERIFIED_TERMS);
-    const [notes, bymaRows, knownFichas] = await Promise.all([
+    const [notes, bonds, bymaRows, knownFichas] = await Promise.all([
       fetchData912Notes(),
+      fetchData912List(DATA912_BONDS_URL),
       fetchBymaLebacs(),
       Promise.all(known.map(async (ticker) => [ticker, await fetchBymaFicha(ticker)]))
     ]);
-    const data912Rows = notes && Array.isArray(notes.rows) ? notes.rows : [];
+    const noteRows = notes && Array.isArray(notes.rows) ? notes.rows : [];
+    const bondRows = Array.isArray(bonds) ? bonds : [];
+    const data912Rows = noteRows.concat(bondRows);
     const bymaList = Array.isArray(bymaRows) ? bymaRows : [];
     const fichas = {};
     knownFichas.forEach(([ticker, row]) => {
@@ -310,12 +346,22 @@ async function loadLecapCurve() {
         fichas[ticker] = row;
       });
     }
-    return buildLecapCurve({
+    const curve = buildLecapCurve({
       now: new Date(),
       data912Rows,
       bymaRows: bymaList,
       fichas
     });
+    const calendar = quoteCalendar(new Date());
+    const chequeLecaps = buildChequeLecapQuotes({
+      data912Rows,
+      settlement: calendar.settlement
+    });
+    if (curve) {
+      curve.chequeLecaps = chequeLecaps;
+      return curve;
+    }
+    return { chequeLecaps };
   } catch (error) {
     console.warn('[rates-api] LECAP no disponible:', error.message);
     return null;
@@ -323,16 +369,21 @@ async function loadLecapCurve() {
 }
 
 async function fetchData912Notes() {
+  const rows = await fetchData912List(DATA912_NOTES_URL);
+  return rows ? { rows, asOf: null } : null;
+}
+
+async function fetchData912List(url) {
   try {
-    const res = await fetch(DATA912_NOTES_URL, {
+    const res = await fetch(url, {
       headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' },
       signal: AbortSignal.timeout(4000)
     });
     if (!res.ok) return null;
     const data = await res.json();
-    return { rows: Array.isArray(data) ? data : [], asOf: res.headers.get('last-modified') };
+    return Array.isArray(data) ? data : [];
   } catch (error) {
-    console.warn('[rates-api] Data912 letras no disponible:', error.message);
+    console.warn('[rates-api] Data912 no disponible:', url, error.message);
     return null;
   }
 }

@@ -32,12 +32,13 @@ const HANDLERS = {
     exports: { 'studio-access.js': ['sheetWebhookUrl'] }
   },
   'api/rates.js': {
-    files: ['caucion-buckets.js', 'macro-vs-letra.js', 'lecap-yields.js', 'broker-costs.js'],
+    files: ['caucion-buckets.js', 'macro-vs-letra.js', 'lecap-yields.js', 'broker-costs.js', 'cheque-market.js'],
     exports: {
       'caucion-buckets.js': ['bucketCaucionQuotes'],
       'macro-vs-letra.js': ['macroBandsFromArgentinaDatos'],
       'lecap-yields.js': ['buildLecapCurve', 'tradableLecaps'],
-      'broker-costs.js': ['tnaFromCuotapartes']
+      'broker-costs.js': ['tnaFromCuotapartes'],
+      'cheque-market.js': ['parseBcraMonetarias', 'buildChequeLecapQuotes']
     }
   }
 };
