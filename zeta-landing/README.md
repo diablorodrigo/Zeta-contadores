@@ -30,29 +30,40 @@ Plataforma corporativa de colocación de liquidez transitoria con control de acc
 - **LECAP Corta:** La más corta que llega a 30 días, para poder compararla con un plazo fijo. El respaldo escrito es **S30N6 al 22,96% TNA** (cierre 23/10/2026; TIR 25,50%; paga 129,89 cada 100 nominales). En vivo la pisa `/api/rates`.
 - **Plazo Fijo Tradicional:** **~19.5% TNA** (promedio grandes bancos BNA / Galicia / Santander, inmovilizado a 30 días).
 - **Dólares (USD):** Toggle de moneda en el encabezado con colocación fija al 5.0% anual.
-- **Descuento de cheques:** compara un banco contra la propuesta Zeta. Las tasas no salen del refresco de mercado; se editan en `config.js` (ver abajo).
+- **Descuento de cheques:** compara un banco contra la propuesta Zeta, con el costo efectivo (TNA y TEA) y el líquido. Al lado de la tasa pactada están las referencias de cheques de septiembre 2026 (cargadas a mano) y las series del BCRA. Abajo se compara, al plazo del cheque, contra caución, plazo fijo y LECAP/Boncap.
 
 ---
 
-## Descuento de cheques — editar tasas
+## Descuento de cheques
 
-En `config.js`, bloque `ZETA_CONFIG.chequeDiscount`. Son **tasas de ejemplo** hasta conectar una fuente en vivo. El refresco de caución, LECAP y plazo fijo no las modifica.
+En `config.js`, bloque `ZETA_CONFIG.chequeDiscount`. La TNA pactada arranca en 27,5% para el banco y 25,73% para Zeta (avalado MAV de septiembre 2026). En la pantalla se puede pisar.
 
-Porcentajes de tasa en puntos (`27.5` = 27,5%). `iva` en decimal (`0.21` = 21%).
+`referenciasCheques` son valores de septiembre 2026 (VetaCap vía Infobae, 21/10/2026): promedio 26,84%, avalado 25,73%, no garantizado 29,23%, garantía MAV 24,92%. MAV Data no tiene una API pública verificada, así que no los pisa el refresco. Quedan editables, con la fecha y la fuente a la vista.
 
-Defaults de esta versión:
+`/api/rates` suma, para esta pantalla:
 
-| Campo | Banco | Propuesta Zeta |
-| --- | --- | --- |
-| Nombre | Banco Macro (`bankLabel`, editable también en la simulación) | Propuesta Zeta |
-| `tnaDesc` | 27,5% | 25,5% |
-| `derechosPct` | 0,06% | 0,05% |
-| `tnaArancel` | 1,00% | 0,70% |
-| `iva` | 0,21 | 0,21 |
+- BCRA Estadísticas v4.0, sin clave (`/monetarias?limit=3000`): documentos a sola firma 1216 (techo de referencia), adelantos 13, TAMAR 44, BADLAR 7, plazo fijo 1189 / 1192 / 1207 y el stock de descuento 1346. Si no responde, queda la foto del 28/10/2026 con la fecha de cada serie y un aviso.
+- Caución BYMA ya integrada: para el plazo del cheque se toma la fila viva más cercana. Si BYMA no trae filas, se usan los baldes de `config.js`.
+- LECAP/Boncap: precio de Data912 `GET /live/arg_notes` y, si esa especie no está en letras, `GET /live/arg_bonds`. El pago final es el de la consulta del 28/10/2026. Esos flujos salen de calculadoras de terceros y no están confirmados con la Secretaría de Finanzas. Sin precio, se muestra esa foto fechada.
 
-En la pantalla el contador carga monto y plazo, y puede pisar el nombre del banco y la TNA de descuento solo para esa simulación. Derechos, arancel e IVA siguen los de `config.js`.
+Los costos compartidos están en `costos`. Puntos, salvo `iva` e `icdbAlicuota` (decimal). La fórmula está en `cheque-discount.js`.
 
-Las fórmulas están comentadas en `cheque-discount.js`. Si eligen cheques, el lead al Sheet manda `instrument: "descuento_cheques"`, `monto`, `plazo`, `cftEfectivoBanco`, `cftEfectivoZeta`, `cftNominalBanco`, `cftNominalZeta` y `conviene` (más `resumen` en una línea). `rendimiento` en ese caso es la diferencia de plata neta de Zeta contra el banco, en pesos (puede ser negativa).
+El importe descontado es el valor actual: `VN / (1 + TNA × días / 365)`. Sobre ese importe, anual a 365 días, va el derecho MAV de venta (0,06% + IVA). La compra (0,03% + IVA) la paga el comprador y solo entra si se marca. El arancel de ALyC (0,40% + IVA, Rosval junio 2026) es anual sobre el VN. El impuesto a los créditos y débitos se calcula sobre el crédito. El ejemplo no computa nada contra Ganancias.
+
+Verificado y usado en el ejemplo: derecho MAV de venta, arancel Rosval, IVA de ambos, y el cómputo de Ganancias (33% general, 100% micro y pequeñas, 60% industria mediana tramo 1). La alícuota de 0,6% del impuesto al cheque está a confirmar. También a confirmar, y en cero o apagados por defecto: IVA sobre el interés, comisión bancaria, aval SGR y sellos en Salta.
+
+Caso de referencia, VN $1.000.000 al 25,73%, sin compra ni esos cargos a confirmar:
+
+| Plazo | Líquido | TNA de costo | TNA sin impuesto |
+| --- | --- | --- | --- |
+| 60 días | $952.759 | 30,16% | 26,33% |
+| 90 días | $933.346 | 28,96% | 26,36% |
+
+La pantalla dice, para la propuesta Zeta, si descontar es más caro o más barato que esperar en caución, en plazo fijo y en la letra más cercana. También muestra el líquido colocado a esa TNA contra el nominal del cheque.
+
+Hay un enlace a la API de cheques denunciados del BCRA. No se consulta desde acá.
+
+El lead manda `instrument: "descuento_cheques"`, los CFT de siempre, el líquido y la TNA/TEA de costo de Zeta, y `conviene`. `rendimiento` sigue siendo la diferencia de líquido de Zeta contra el banco.
 
 ---
 
@@ -86,7 +97,7 @@ ArgentinaDatos `/cauciones/ars` queda de respaldo: muchas veces responde `[]` (s
 
 El payoff no es 100. Cada letra capitaliza su TEM con base 30/360 (`100 * (1 + TEM) ^ (días / 30)`). La TEM sale de la ficha BYMA. Si la ficha no trae el número, se usa la de licitación ya contrastada con el flujo publicado (S13N6 2,10% paga 109,65; S29E7 2,25% paga 111,68; S30O6 2,55% paga 135,28; S30N6 2,30% paga 129,89). Sin TEM conocida esa especie no entra.
 
-TNA = `(payoff / precio - 1) * 365 / días`. TEA y TIR (un solo pago) = `(payoff / precio) ^ (365 / días) - 1`. Los días de la TNA corren desde la liquidación 24 hs. Los días que usa el comparador corren de hoy al vencimiento. La letra de referencia de la tarjeta LECAP sigue siendo la más corta con al menos 30 días de liquidación. La comparación contra el plazo fijo elige otra si el plazo pedido calza mejor con otra especie. La curva vigente se muestra abajo. La barra dice la fuente y la hora. Si Data912 y BYMA fallan, queda el respaldo de `lecap-yields.js` / `config.js`, con fecha de vencimiento, y se descarta la que ya venció. El refresco sigue cada 30 minutos. Las tasas de cheques no se modifican.
+TNA = `(payoff / precio - 1) * 365 / días`. TEA y TIR (un solo pago) = `(payoff / precio) ^ (365 / días) - 1`. Los días de la TNA corren desde la liquidación 24 hs. Los días que usa el comparador corren de hoy al vencimiento. La letra de referencia de la tarjeta LECAP sigue siendo la más corta con al menos 30 días de liquidación. La comparación contra el plazo fijo elige otra si el plazo pedido calza mejor con otra especie. La curva vigente se muestra abajo. La barra dice la fuente y la hora. Si Data912 y BYMA fallan, queda el respaldo de `lecap-yields.js` / `config.js`, con fecha de vencimiento, y se descarta la que ya venció. El refresco sigue cada 30 minutos. Las tasas de cheques de septiembre no se modifican: se cargan a mano. El precio de las letras que usa el descuento sí sale de Data912, con el pago final de terceros señalado aparte de la curva LECAP de esta sección.
 
 ## Comisiones, impuesto al cheque y FCI
 

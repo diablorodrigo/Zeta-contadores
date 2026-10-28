@@ -15,11 +15,13 @@ const ZETA_CONFIG = {
     directCaucionesUrl: "https://api.argentinadatos.com/v1/finanzas/cauciones/ars",
     bymaCaucionesUrl: "https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/cauciones",
     directLecapUrl: "https://data912.com/live/arg_notes",
+    directLecapBondsUrl: "https://data912.com/live/arg_bonds",
     bymaLecapUrl: "https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/lebacs",
     bymaFichaUrl: "https://open.bymadata.com.ar/vanoms-be-core/rest/api/bymadata/free/bnown/fichatecnica/especies/general",
     directPlazoFijoUrl: "https://api.argentinadatos.com/v1/finanzas/tasas/depositos30Dias",
     directMacroPlazoFijoUrl: "https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo",
-    directFciHistoricoUrl: "https://api.argentinadatos.com/v1/finanzas/fci/fondos/balanz-capital-money-market-clase-a/historico"
+    directFciHistoricoUrl: "https://api.argentinadatos.com/v1/finanzas/fci/fondos/balanz-capital-money-market-clase-a/historico",
+    directBcraMonetariasUrl: "https://api.bcra.gob.ar/estadisticas/v4.0/monetarias?limit=3000"
   },
 
   // TASAS DE RESPALDO. La caución en vivo sale de BYMA (ver api/rates.js).
@@ -123,26 +125,48 @@ const ZETA_CONFIG = {
     nota: "Las MiPyME pueden computar una parte como pago a cuenta de Ganancias según la categoría. El porcentaje lo confirma el contador. Esta simulación no lo resta."
   },
 
-  // Descuento de cheques: tasas de EJEMPLO, editables a mano.
-  // El refresco de caución / LECAP / plazo fijo no las pisa.
-  // Cambialas acá hasta conectar una fuente en vivo.
-  // tnaDesc, derechosPct y tnaArancel van en puntos (27.5 = 27,5%).
-  // iva va en decimal (0.21 = 21%). Las fórmulas están en cheque-discount.js.
-  // Derechos y arancel ya están en esa cuenta. No se suma encima la comisión
-  // de letras (0,10%), la de caución (0,50% / 90 días) ni la del FCI.
+  // Descuento de cheques. La TNA pactada se edita en la simulación.
+  // Los costos verificados están en `costos` (puntos, salvo iva e icdbAlicuota).
+  // La fórmula está en cheque-discount.js. No se suma la comisión de letras,
+  // la de caución ni la del FCI.
+  //
+  // referenciasCheques es septiembre 2026 (VetaCap / Infobae). MAV Data no
+  // tiene API pública verificada: no las pisa el refresco.
+  // BCRA, caución y letras sí se refrescan. Si una fuente falla, queda la
+  // última foto fechada (cheque-market.js).
   chequeDiscount: {
     bankLabel: "Banco Macro",
     bank: {
-      tnaDesc: 27.5,      // referencia de mercado del ejemplo (TNA de descuento)
-      derechosPct: 0.06,  // derechos de mercado, % sobre el nominal
-      tnaArancel: 1.0     // TNA de arancel
+      tnaDesc: 27.5
     },
     zeta: {
-      tnaDesc: 25.5,      // un poco más competitiva que el banco de ejemplo
-      derechosPct: 0.05,
-      tnaArancel: 0.7
+      tnaDesc: 25.73
     },
-    iva: 0.21
+    costos: {
+      iva: 0.21,
+      mavVentaPct: 0.06,
+      mavCompraPct: 0.03,
+      aplicarCompra: false,
+      alycPct: 0.40,
+      icdbAlicuota: 0.006,
+      computoGanancias: 0,
+      ivaIntereses: false,
+      ivaInteresesAlicuota: 0.21,
+      comisionBancoPct: 0,
+      comisionBancoIva: false,
+      avalSgrPct: 0,
+      avalSgrIva: false,
+      sellosPct: 0
+    },
+    referenciasCheques: {
+      periodo: "septiembre 2026",
+      fuente: "VetaCap vía Infobae, 21/10/2026",
+      nota: "MAV Data es una web. No hay API pública verificada: estos valores se cargan a mano.",
+      promedio: 26.84,
+      avalado: 25.73,
+      noGarantizado: 29.23,
+      garantiaMav: 24.92
+    }
   },
 
   // Plazo fijo Banco Macro vs letra corta. Las fórmulas están en macro-vs-letra.js.
