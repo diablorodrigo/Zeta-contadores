@@ -13,10 +13,12 @@
  *   compra 0,03% (la paga el comprador, salvo que se marque aplicarla)
  * Arancel de ALyC: anual a 365 días sobre el VN, más IVA.
  *   Default 0,40% (Rosval, junio 2026, un solo agente).
- * Impuesto a los créditos y débitos: alícuota sobre el crédito (P menos los
- * gastos), antes de retenerlo. El ejemplo usa 0,6%. La alícuota está a
- * confirmar. El cómputo contra Ganancias (0, 33%, 100% o 60%) reduce el
- * impuesto que queda a cargo; el ejemplo no lo computa.
+ * Impuesto a los créditos y débitos: alícuota general 0,6% (Decreto 380/2001,
+ * art. 7), sobre el crédito (P menos los gastos). El cómputo contra Ganancias
+ * (0, 33%, 100% o 60%) reduce lo que queda a cargo; el ejemplo no lo computa.
+ * Si cobroFciMoneyMarket está activo, ese impuesto no entra en el líquido.
+ * La situación (cobro destinado a un FCI money market a 1 día) no se toma
+ * como exención definitiva: la pantalla la marca a confirmar.
  *
  * Líquido = P - gastos - impuesto neto
  * TNA de costo = (VN / líquido - 1) * 365 / días
@@ -39,6 +41,7 @@ function chequeCostoEjemplo() {
     alycPct: 0.40,
     icdbAlicuota: 0.006,
     computoGanancias: 0,
+    cobroFciMoneyMarket: false,
     ivaIntereses: false,
     ivaInteresesAlicuota: 0.21,
     comisionBancoPct: 0,
@@ -84,6 +87,7 @@ function calcChequeCosto(monto, plazo, params) {
   var alycPct = chequeNum(p.alycPct, 0.40);
   var icdbAlicuota = chequeNum(p.icdbAlicuota, 0.006);
   var computo = chequeNum(p.computoGanancias, 0);
+  var cobroFci = !!p.cobroFciMoneyMarket;
   var ivaInteresesOn = !!p.ivaIntereses;
   var ivaInteresesAlicuota = chequeNum(p.ivaInteresesAlicuota, 0.21);
   var comisionBancoPct = chequeNum(p.comisionBancoPct, 0);
@@ -122,6 +126,10 @@ function calcChequeCosto(monto, plazo, params) {
     icdb: 0,
     icdbComputado: 0,
     icdbNeto: 0,
+    icdbConImpuesto: 0,
+    cobroFciMoneyMarket: false,
+    tnaConIcdb: null,
+    tnaConIcdbPct: null,
     liquido: montoOk ? safeMonto : 0,
     liquidoSinIcdb: montoOk ? safeMonto : 0,
     montoRecibido: montoOk ? safeMonto : 0,
@@ -158,11 +166,14 @@ function calcChequeCosto(monto, plazo, params) {
   var pre = importe - gastos;
   var icdb = pre > 0 ? pre * icdbAlicuota : 0;
   var icdbComputado = icdb * computo;
-  var icdbNeto = icdb - icdbComputado;
+  var icdbConImpuesto = icdb - icdbComputado;
+  var icdbNeto = cobroFci ? 0 : icdbConImpuesto;
   var liquido = pre - icdbNeto;
+  var liquidoConIcdb = pre - icdbConImpuesto;
 
   var tnaCosto = chequeTnaFromNet(safeMonto, liquido, safePlazo);
   var teaCosto = chequeTeaFromNet(safeMonto, liquido, safePlazo);
+  var tnaConIcdb = chequeTnaFromNet(safeMonto, liquidoConIcdb, safePlazo);
   var tnaSin = chequeTnaFromNet(safeMonto, pre, safePlazo);
   var teaSin = chequeTeaFromNet(safeMonto, pre, safePlazo);
   var costoPeriodo = liquido > 0 ? (safeMonto - liquido) / liquido : null;
@@ -190,6 +201,8 @@ function calcChequeCosto(monto, plazo, params) {
     icdb: icdb,
     icdbComputado: icdbComputado,
     icdbNeto: icdbNeto,
+    icdbConImpuesto: icdbConImpuesto,
+    cobroFciMoneyMarket: cobroFci,
     computoGanancias: computo,
     liquido: liquido,
     liquidoSinIcdb: pre,
@@ -198,9 +211,11 @@ function calcChequeCosto(monto, plazo, params) {
     costoPeriodo: costoPeriodo,
     tnaCosto: tnaCosto,
     teaCosto: teaCosto,
+    tnaConIcdb: tnaConIcdb,
     tnaSinIcdb: tnaSin,
     teaSinIcdb: teaSin,
     tnaCostoPct: pointsPct(tnaCosto),
+    tnaConIcdbPct: pointsPct(tnaConIcdb),
     teaCostoPct: pointsPct(teaCosto),
     tnaSinIcdbPct: pointsPct(tnaSin),
     teaSinIcdbPct: pointsPct(teaSin),

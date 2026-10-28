@@ -50,7 +50,7 @@ Los costos compartidos están en `costos`. Puntos, salvo `iva` e `icdbAlicuota` 
 
 El importe descontado es el valor actual: `VN / (1 + TNA × días / 365)`. Sobre ese importe, anual a 365 días, va el derecho MAV de venta (0,06% + IVA). La compra (0,03% + IVA) la paga el comprador y solo entra si se marca. El arancel de ALyC (0,40% + IVA, Rosval junio 2026) es anual sobre el VN. El impuesto a los créditos y débitos se calcula sobre el crédito. El ejemplo no computa nada contra Ganancias.
 
-Verificado y usado en el ejemplo: derecho MAV de venta, arancel Rosval, IVA de ambos, y el cómputo de Ganancias (33% general, 100% micro y pequeñas, 60% industria mediana tramo 1). La alícuota de 0,6% del impuesto al cheque está a confirmar. También a confirmar, y en cero o apagados por defecto: IVA sobre el interés, comisión bancaria, aval SGR y sellos en Salta.
+Verificado y usado en el ejemplo: derecho MAV de venta, arancel Rosval, IVA de ambos, la alícuota general de 0,6% del impuesto a los créditos y débitos (Decreto 380/2001, art. 7) y el cómputo de Ganancias (33% general, 100% micro y pequeñas, 60% industria mediana tramo 1). La casilla «El cobro va a un FCI money market a 1 día» está apagada. Si se activa, ese impuesto no entra en el costo y se ven la TNA con impuesto y la TNA sin impuesto. Está marcada a confirmar: no es una exención definitiva y depende de la cuenta y del fondo. También a confirmar, y en cero o apagados por defecto: IVA sobre el interés, comisión bancaria, aval SGR y sellos en Salta.
 
 Caso de referencia, VN $1.000.000 al 25,73%, sin compra ni esos cargos a confirmar:
 
