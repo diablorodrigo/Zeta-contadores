@@ -110,6 +110,10 @@
       document.querySelectorAll('[data-brand="name"]').forEach(function (n) { n.textContent = b.name; });
       document.querySelectorAll('[data-brand="tagline"]').forEach(function (n) { n.textContent = b.tagline; });
       document.querySelectorAll('[data-brand="logo"]').forEach(function (n) { n.textContent = b.logoText; });
+      if (b.logo) {
+        document.querySelectorAll('[data-brand-logo]').forEach(function (n) { var src = b.logo[n.getAttribute('data-brand-logo')]; if (src) n.src = src; });
+      }
+      if (b.favicon) { var fav = document.querySelector('[data-brand-favicon]'); if (fav) fav.href = b.favicon; }
       if (b.accent) document.documentElement.style.setProperty('--zc-accent', b.accent);
     }
   });

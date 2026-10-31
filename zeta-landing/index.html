@@ -3,22 +3,28 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#020617">
+  <meta name="theme-color" content="#0E1525">
   <script src="theme.js"></script>
   <link rel="stylesheet" href="theme.css">
+  <link rel="icon" type="image/svg+xml" href="assets/brand/favicon.svg" data-brand-favicon>
   <title>ZCONTADORES | Tesorería para estudios contables</title>
   
   <!-- Google Fonts: Inter -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@700;800&display=swap" rel="stylesheet">
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
+    var ZC_PAL = {};
+    [50,100,200,300,400,500,600,700,800,900,950].forEach(function (k) { ZC_PAL[k] = 'rgb(var(--zc-' + k + ') / <alpha-value>)'; });
     tailwind.config = {
       theme: {
         extend: {
+          // Paleta de marca centralizada en theme.css (--zc-50 … --zc-950).
+          // emerald/teal/blue del HTML y de simulator.js toman la marca; el modo cheques usa fucsia para distinguirse.
+          colors: { brand: ZC_PAL, emerald: ZC_PAL, teal: ZC_PAL, blue: ZC_PAL },
           fontFamily: {
             sans: ['"Plus Jakarta Sans"', 'sans-serif'],
           }
@@ -41,7 +47,7 @@
       width: 22px;
       height: 22px;
       border-radius: 50%;
-      background: #2563eb;
+      background: var(--zc-accent);
       cursor: pointer;
       box-shadow: 0 2px 6px rgba(0,0,0,0.3);
       border: 3px solid white;
@@ -59,11 +65,12 @@
     <div class="absolute -bottom-40 -right-40 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none"></div>
 
     <div class="max-w-md w-full bg-slate-900/90 border border-slate-800 rounded-3xl p-8 shadow-2xl backdrop-blur-xl relative z-10 text-center">
-      <div class="w-16 h-16 bg-blue-500/10 border border-blue-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6 text-blue-400">
-        <i data-lucide="shield-check" class="w-8 h-8"></i>
+      <div class="mx-auto mb-5 w-20 h-20">
+        <img class="zc-logo zc-logo-light w-20 h-20" data-brand-logo="light" src="assets/brand/zc-icono-claro.svg" alt="ZCONTADORES">
+        <img class="zc-logo zc-logo-dark w-20 h-20" data-brand-logo="dark" src="assets/brand/zc-icono-oscuro.svg" alt="ZCONTADORES">
       </div>
 
-      <p class="text-sm font-extrabold tracking-[0.2em] mb-3" style="color:var(--zc-accent)" data-brand="name">ZCONTADORES</p>
+      <p class="zc-wordmark text-lg mb-3" data-brand="wordmark"><span class="zc-wm-a">Z</span>CONTADORES</p>
       <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-300 mb-4 tracking-wide uppercase">
         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
         Plataforma Corporativa Privada
@@ -115,6 +122,11 @@
     <header class="sticky top-0 z-40 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 transition-colors">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
         <div class="flex items-center gap-4">
+          <a href="#simulator-start" class="zc-brand hidden md:flex items-center gap-2.5 pr-4 mr-1 border-r border-slate-800" aria-label="ZCONTADORES">
+            <img class="zc-logo zc-logo-light w-9 h-9" data-brand-logo="light" src="assets/brand/zc-icono-claro.svg" alt="">
+            <img class="zc-logo zc-logo-dark w-9 h-9" data-brand-logo="dark" src="assets/brand/zc-icono-oscuro.svg" alt="">
+            <span class="zc-wordmark text-base" data-brand="wordmark"><span class="zc-wm-a">Z</span>CONTADORES</span>
+          </a>
           <div id="studio-avatar" class="w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg text-white shadow-md border border-white/10 transition-colors">
             EP
           </div>
@@ -148,7 +160,7 @@
 
       <!-- Bienvenida: flujo de la plata (welcome-flow.js) -->
       <section class="zf-welcome" aria-labelledby="zf-title">
-        <span class="zf-tag"><span data-brand="name">ZCONTADORES</span> · <span data-brand="tagline">Tesorería para estudios contables</span></span>
+        <span class="zf-tag"><img class="zc-logo zc-logo-light zf-tag-logo" data-brand-logo="light" src="assets/brand/zc-icono-claro.svg" alt=""><img class="zc-logo zc-logo-dark zf-tag-logo" data-brand-logo="dark" src="assets/brand/zc-icono-oscuro.svg" alt=""><span data-brand="name">ZCONTADORES</span> · <span data-brand="tagline">Tesorería para estudios contables</span></span>
         <h2 id="zf-title">¿A dónde va la plata ociosa de tu cliente?</h2>
         <p class="zf-sub">Cada caño es una alternativa. El grosor y la velocidad muestran cuánto rinde en 30 días. <span class="zf-ej">Ejemplo</span> con $10.000.000 de un cliente PyME.</p>
         <div id="zf-flow"></div>
@@ -363,7 +375,7 @@
                   max="180"
                   step="1"
                   inputmode="numeric"
-                  class="w-full sm:w-32 px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm outline-none focus:border-violet-500"
+                  class="w-full sm:w-32 px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm outline-none focus:border-fuchsia-500"
                 >
               </div>
             </div>
@@ -424,7 +436,7 @@
                 <button onclick="selectInstrument('cheques')" id="btn-inst-cheques" class="p-3.5 rounded-2xl border text-left transition relative bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700 min-w-0">
                   <div class="mb-1">
                     <span class="block text-xs font-bold leading-snug">Descuento de cheques</span>
-                    <span class="mt-1 inline-block text-[10px] font-mono font-bold text-violet-300 bg-violet-950 px-1.5 py-0.5 rounded">Banco vs Zeta</span>
+                    <span class="mt-1 inline-block text-[10px] font-mono font-bold text-fuchsia-300 bg-fuchsia-950 px-1.5 py-0.5 rounded">Banco vs Zeta</span>
                   </div>
                   <p class="text-[11px] text-slate-400">Costo efectivo y si conviene esperar</p>
                 </button>
@@ -508,7 +520,7 @@
                   type="text"
                   maxlength="40"
                   autocomplete="off"
-                  class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-sm outline-none focus:border-violet-500"
+                  class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-sm outline-none focus:border-fuchsia-500"
                 >
               </div>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -521,7 +533,7 @@
                       min="0"
                       step="0.01"
                       inputmode="decimal"
-                      class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm outline-none focus:border-violet-500"
+                      class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm outline-none focus:border-fuchsia-500"
                     >
                     <span class="text-xs font-bold text-slate-400">%</span>
                   </div>
@@ -535,7 +547,7 @@
                       min="0"
                       step="0.01"
                       inputmode="decimal"
-                      class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm outline-none focus:border-violet-500"
+                      class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm outline-none focus:border-fuchsia-500"
                     >
                     <span class="text-xs font-bold text-slate-400">%</span>
                   </div>
@@ -551,31 +563,31 @@
                 <div class="grid grid-cols-2 gap-2">
                   <div>
                     <label for="cheque-ref-promedio" class="block text-[10px] font-semibold text-slate-400 mb-1">Promedio</label>
-                    <input id="cheque-ref-promedio" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
+                    <input id="cheque-ref-promedio" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-fuchsia-500">
                   </div>
                   <div>
                     <label for="cheque-ref-avalado" class="block text-[10px] font-semibold text-slate-400 mb-1">Avalado</label>
                     <div class="flex gap-1">
-                      <input id="cheque-ref-avalado" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
-                      <button type="button" data-use-input="cheque-ref-avalado" class="shrink-0 px-2 rounded-lg border border-violet-500/40 text-[10px] font-semibold text-violet-200">Usar</button>
+                      <input id="cheque-ref-avalado" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-fuchsia-500">
+                      <button type="button" data-use-input="cheque-ref-avalado" class="shrink-0 px-2 rounded-lg border border-fuchsia-500/40 text-[10px] font-semibold text-fuchsia-200">Usar</button>
                     </div>
                   </div>
                   <div>
                     <label for="cheque-ref-no-garantizado" class="block text-[10px] font-semibold text-slate-400 mb-1">No garantizado</label>
                     <div class="flex gap-1">
-                      <input id="cheque-ref-no-garantizado" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
-                      <button type="button" data-use-input="cheque-ref-no-garantizado" class="shrink-0 px-2 rounded-lg border border-violet-500/40 text-[10px] font-semibold text-violet-200">Usar</button>
+                      <input id="cheque-ref-no-garantizado" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-fuchsia-500">
+                      <button type="button" data-use-input="cheque-ref-no-garantizado" class="shrink-0 px-2 rounded-lg border border-fuchsia-500/40 text-[10px] font-semibold text-fuchsia-200">Usar</button>
                     </div>
                   </div>
                   <div>
                     <label for="cheque-ref-garantia" class="block text-[10px] font-semibold text-slate-400 mb-1">Con garantía MAV</label>
                     <div class="flex gap-1">
-                      <input id="cheque-ref-garantia" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
-                      <button type="button" data-use-input="cheque-ref-garantia" class="shrink-0 px-2 rounded-lg border border-violet-500/40 text-[10px] font-semibold text-violet-200">Usar</button>
+                      <input id="cheque-ref-garantia" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-fuchsia-500">
+                      <button type="button" data-use-input="cheque-ref-garantia" class="shrink-0 px-2 rounded-lg border border-fuchsia-500/40 text-[10px] font-semibold text-fuchsia-200">Usar</button>
                     </div>
                   </div>
                 </div>
-                <button type="button" data-use-input="cheque-ref-promedio" class="text-[10px] font-semibold text-violet-300">Usar el promedio en la TNA de Zeta</button>
+                <button type="button" data-use-input="cheque-ref-promedio" class="text-[10px] font-semibold text-fuchsia-300">Usar el promedio en la TNA de Zeta</button>
 
                 <div class="pt-2 border-t border-slate-800 space-y-1.5">
                   <div class="flex items-center justify-between gap-2">
@@ -595,43 +607,43 @@
                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   <div>
                     <label for="cheque-mav-venta" class="block text-[10px] font-semibold text-slate-400 mb-1">MAV venta, anual</label>
-                    <input id="cheque-mav-venta" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
+                    <input id="cheque-mav-venta" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-fuchsia-500">
                   </div>
                   <div>
                     <label for="cheque-mav-compra" class="block text-[10px] font-semibold text-slate-400 mb-1">MAV compra, anual</label>
-                    <input id="cheque-mav-compra" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
+                    <input id="cheque-mav-compra" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-fuchsia-500">
                   </div>
                   <div>
                     <label for="cheque-alyc" class="block text-[10px] font-semibold text-slate-400 mb-1">Arancel ALyC, anual</label>
-                    <input id="cheque-alyc" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
+                    <input id="cheque-alyc" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-fuchsia-500">
                   </div>
                   <div>
                     <label for="cheque-iva" class="block text-[10px] font-semibold text-slate-400 mb-1">IVA de esos costos</label>
-                    <input id="cheque-iva" type="number" min="0" step="0.1" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
+                    <input id="cheque-iva" type="number" min="0" step="0.1" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-fuchsia-500">
                   </div>
                   <div>
                     <label for="cheque-icdb" class="block text-[10px] font-semibold text-slate-400 mb-1">Impuesto créd/déb, 0,6%</label>
-                    <input id="cheque-icdb" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
+                    <input id="cheque-icdb" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-fuchsia-500">
                   </div>
                   <div>
                     <label for="cheque-comision-banco" class="block text-[10px] font-semibold text-slate-400 mb-1">Comisión bancaria, anual <span class="text-amber-300">a confirmar</span></label>
-                    <input id="cheque-comision-banco" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
+                    <input id="cheque-comision-banco" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-fuchsia-500">
                   </div>
                   <div>
                     <label for="cheque-aval-sgr" class="block text-[10px] font-semibold text-slate-400 mb-1">Aval SGR, anual <span class="text-amber-300">a confirmar</span></label>
-                    <input id="cheque-aval-sgr" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
+                    <input id="cheque-aval-sgr" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-fuchsia-500">
                   </div>
                   <div>
                     <label for="cheque-sellos" class="block text-[10px] font-semibold text-slate-400 mb-1">Sellos sobre VN <span class="text-amber-300">a confirmar</span></label>
-                    <input id="cheque-sellos" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
+                    <input id="cheque-sellos" type="number" min="0" step="0.01" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-fuchsia-500">
                   </div>
                   <div>
                     <label for="cheque-iva-intereses-aliq" class="block text-[10px] font-semibold text-slate-400 mb-1">IVA sobre intereses <span class="text-amber-300">a confirmar</span></label>
-                    <input id="cheque-iva-intereses-aliq" type="number" min="0" step="0.1" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-violet-500">
+                    <input id="cheque-iva-intereses-aliq" type="number" min="0" step="0.1" inputmode="decimal" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-xs outline-none focus:border-fuchsia-500">
                   </div>
                 </div>
                 <label class="flex items-start gap-2 text-[11px] text-slate-300 leading-snug">
-                  <input id="cheque-cobro-fci" type="checkbox" class="mt-0.5 accent-violet-500">
+                  <input id="cheque-cobro-fci" type="checkbox" class="mt-0.5 accent-fuchsia-500">
                   <span>El cobro va a un FCI money market a 1 día <span class="text-amber-300">a confirmar</span></span>
                 </label>
                 <p class="text-[10px] leading-relaxed text-slate-500">
@@ -639,24 +651,24 @@
                   Depende de la normativa vigente y de las condiciones de la cuenta y del fondo. Confirmar con el contador o con ARCA. No es una exención definitiva.
                 </p>
                 <label class="flex items-start gap-2 text-[11px] text-slate-300 leading-snug">
-                  <input id="cheque-aplicar-compra" type="checkbox" class="mt-0.5 accent-violet-500">
+                  <input id="cheque-aplicar-compra" type="checkbox" class="mt-0.5 accent-fuchsia-500">
                   <span>Sumar el derecho de compra MAV al vendedor. Por defecto lo paga el comprador.</span>
                 </label>
                 <label class="flex items-start gap-2 text-[11px] text-slate-300 leading-snug">
-                  <input id="cheque-iva-intereses" type="checkbox" class="mt-0.5 accent-violet-500">
+                  <input id="cheque-iva-intereses" type="checkbox" class="mt-0.5 accent-fuchsia-500">
                   <span>Sumar IVA sobre el interés del descuento. Apagado: la alícuota está a confirmar.</span>
                 </label>
                 <label class="flex items-start gap-2 text-[11px] text-slate-300 leading-snug">
-                  <input id="cheque-comision-banco-iva" type="checkbox" class="mt-0.5 accent-violet-500">
+                  <input id="cheque-comision-banco-iva" type="checkbox" class="mt-0.5 accent-fuchsia-500">
                   <span>Sumar IVA a la comisión bancaria.</span>
                 </label>
                 <label class="flex items-start gap-2 text-[11px] text-slate-300 leading-snug">
-                  <input id="cheque-aval-sgr-iva" type="checkbox" class="mt-0.5 accent-violet-500">
+                  <input id="cheque-aval-sgr-iva" type="checkbox" class="mt-0.5 accent-fuchsia-500">
                   <span>Sumar IVA al aval SGR.</span>
                 </label>
                 <div>
                   <label for="cheque-computo" class="block text-[10px] font-semibold text-slate-400 mb-1">Cómputo del impuesto contra Ganancias</label>
-                  <select id="cheque-computo" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white text-xs outline-none focus:border-violet-500">
+                  <select id="cheque-computo" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white text-xs outline-none focus:border-fuchsia-500">
                     <option value="0">Sin computar</option>
                     <option value="0.33">General, 33%</option>
                     <option value="1">Micro y pequeñas, 100%</option>
@@ -676,7 +688,7 @@
 
               <p class="text-[11px] leading-relaxed text-slate-500">
                 Antes de tomar el cheque se puede consultar la Central de cheques denunciados del BCRA.
-                <a href="https://www.bcra.gob.ar/apis-banco-central/" target="_blank" rel="noopener noreferrer" class="text-violet-300 underline underline-offset-2">API pública del BCRA</a>.
+                <a href="https://www.bcra.gob.ar/apis-banco-central/" target="_blank" rel="noopener noreferrer" class="text-fuchsia-300 underline underline-offset-2">API pública del BCRA</a>.
                 Esta pantalla no la consulta.
               </p>
               <p class="text-[11px] leading-relaxed text-slate-500">
@@ -793,7 +805,7 @@
 
           <div id="cheque-comparison-card" class="hidden bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-xl">
             <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-2">
-              <i data-lucide="scale" class="w-4 h-4 text-violet-400"></i>
+              <i data-lucide="scale" class="w-4 h-4 text-fuchsia-400"></i>
               <span>Banco vs Propuesta Zeta</span>
             </h4>
             <p class="text-[11px] text-slate-500 mb-4">Misma plata y mismos días. El costo efectivo incluye la tasa pactada y los gastos cargados.</p>
@@ -835,14 +847,14 @@
         <div class="lg:col-span-5 space-y-6">
 
           <div id="cheque-result-stack" class="hidden">
-            <div class="bg-gradient-to-br from-violet-950/80 via-slate-900 to-slate-900 border-2 border-violet-500/40 rounded-3xl p-6 sm:p-8 shadow-2xl">
+            <div class="bg-gradient-to-br from-fuchsia-950/80 via-slate-900 to-slate-900 border-2 border-fuchsia-500/40 rounded-3xl p-6 sm:p-8 shadow-2xl">
               <div class="flex items-center justify-between gap-2 mb-2">
-                <span class="text-xs font-bold tracking-wider uppercase text-violet-300">Líquido a cobrar con Zeta</span>
+                <span class="text-xs font-bold tracking-wider uppercase text-fuchsia-300">Líquido a cobrar con Zeta</span>
                 <span id="cheque-winner-badge" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Conviene</span>
               </div>
               <div id="cheque-hero-cft" class="text-4xl sm:text-5xl font-extrabold text-emerald-400 font-mono tracking-tight">—</div>
               <p id="cheque-hero-subtitle" class="text-xs text-slate-400 mt-2">Costo efectivo de la propuesta Zeta.</p>
-              <p id="cheque-hero-rates" class="text-sm font-mono text-violet-200 mt-1 mb-6">—</p>
+              <p id="cheque-hero-rates" class="text-sm font-mono text-fuchsia-200 mt-1 mb-6">—</p>
               <div class="space-y-3 pt-4 border-t border-slate-800 text-sm">
                 <div class="flex justify-between gap-3">
                   <span class="text-slate-400">Monto del cheque</span>

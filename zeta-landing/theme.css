@@ -25,16 +25,18 @@
 /* Texto blanco sobre botones y fondos de color sólidos se mantiene */
 .theme-light .bg-blue-600.text-white,.theme-light .bg-blue-600 .text-white,.theme-light .bg-blue-500.text-white,.theme-light .bg-emerald-600.text-white,.theme-light .bg-emerald-600 .text-white,.theme-light .bg-emerald-500.text-white,.theme-light .bg-emerald-500 .text-white,
 .theme-light #studio-avatar,.theme-light #studio-avatar *{color:#fff}
-.theme-light .text-slate-950{color:#0f172a}
-.theme-light .text-blue-300,.theme-light .text-blue-400{color:#1d4ed8}
+.theme-light .text-slate-950:not(.bg-emerald-500){color:#0f172a}
+.theme-light .text-blue-300,.theme-light .text-blue-400{color:var(--zc-accent-text)}
 .theme-light .text-sky-100,.theme-light .text-sky-300,.theme-light .text-sky-400,.theme-light .hover\:text-sky-300:hover{color:#0369a1}
-.theme-light .text-emerald-200,.theme-light .text-emerald-300,.theme-light .text-emerald-400,.theme-light .text-emerald-400\/80{color:#047857}
+.theme-light .text-emerald-200,.theme-light .text-emerald-300,.theme-light .text-emerald-400,.theme-light .text-emerald-400\/80,.theme-light .text-teal-300,.theme-light .text-teal-300\/80,.theme-light .text-brand-300,.theme-light .text-brand-400{color:var(--zc-accent-text)}
+.theme-light .text-fuchsia-200,.theme-light .text-fuchsia-300,.theme-light .text-fuchsia-400{color:#a21caf}
 .theme-light .text-amber-200,.theme-light .text-amber-300,.theme-light .text-amber-400,.theme-light .text-amber-400\/90{color:#b45309}
 .theme-light .text-rose-400{color:#e11d48}
-.theme-light .bg-emerald-950,.theme-light .bg-emerald-950\/80,.theme-light .bg-emerald-900\/60{background-color:#ecfdf5}
-.theme-light .bg-blue-950,.theme-light .bg-blue-900\/60{background-color:#eff6ff}
+/* Chips chicos (LECAP, FCI, Banco vs Zeta): en claro van con fondo tenue y texto oscuro legible */
+.theme-light .bg-emerald-950,.theme-light .bg-emerald-950\/80,.theme-light .bg-emerald-900\/60,.theme-light .bg-teal-950,.theme-light .bg-blue-950,.theme-light .bg-blue-900\/60{background-color:rgb(var(--zc-50))}
+.theme-light .bg-fuchsia-950{background-color:#fdf4ff}
 .theme-light .bg-sky-950{background-color:#f0f9ff}
-.theme-light [class*="bg-gradient-to"]{background-image:linear-gradient(135deg,#eff6ff,#ffffff 60%)}
+.theme-light [class*="bg-gradient-to"]{background-image:linear-gradient(135deg,rgb(var(--zc-50)),#ffffff 60%)}
 .theme-light .shadow-2xl,.theme-light .shadow-xl{box-shadow:0 20px 40px -24px rgba(15,23,42,.25)}
 .theme-light input,.theme-light select,.theme-light textarea{color:#0f172a}
 .theme-light .pin-box{background:#fff;border-color:#cbd5e1;color:#0f172a}
@@ -42,8 +44,28 @@
 
 /* Bienvenida: flujo de la plata */
 /* Identidad ZCONTADORES. Para re-brandear: estas variables + ZETA_CONFIG.brand en config.js. */
-:root{--zc-accent:#0f766e;--zc-accent-ink:#ffffff;--zc-font:var(--zc-font)}
-.zf-welcome{--zf-card:#0f172a;--zf-line:#1e293b;--zf-ink:#f1f5f9;--zf-mut:#94a3b8;--zf-pipe:color-mix(in srgb,var(--zc-accent) 28%,transparent);--zf-dot:color-mix(in srgb,var(--zc-accent) 70%,#fff);--zf-val:color-mix(in srgb,var(--zc-accent) 55%,#fff);--zf-box:color-mix(in srgb,var(--zc-accent) 14%,#0f172a);
+:root{
+  /* Escala violeta de marca (canales RGB para Tailwind). 800 = #5B21B6, color del logo. */
+  --zc-50:245 243 255;--zc-100:237 233 254;--zc-200:221 214 254;--zc-300:196 181 253;--zc-400:167 139 250;
+  --zc-500:139 92 246;--zc-600:124 58 237;--zc-700:109 40 217;--zc-800:91 33 182;--zc-900:76 29 149;--zc-950:46 16 101;
+  --zc-accent:#5B21B6;--zc-accent-ink:#ffffff;--zc-navy:#14213D;--zc-cream:#F7F6F2;--zc-night:#0E1525;
+  /* Texto/enlaces de acento: en oscuro un violeta más claro para contraste AA */
+  --zc-accent-text:#c4b5fd;--zc-font:"Plus Jakarta Sans",sans-serif;--zc-font-brand:"Sora","Plus Jakarta Sans",sans-serif}
+.theme-light{--zc-accent-text:#5B21B6}
+/* Logo: variante clara/oscura según el selector */
+.zc-logo-light{display:none}.theme-light .zc-logo-light{display:block}.theme-light .zc-logo-dark{display:none}
+.zf-tag .zc-logo{display:none;width:1.1rem;height:1.1rem;vertical-align:-.25rem;margin-right:.4rem}
+.theme-dark .zf-tag .zc-logo-dark,.theme-light .zf-tag .zc-logo-light{display:inline-block}
+.zc-wordmark{font-family:var(--zc-font-brand);font-weight:800;letter-spacing:.06em;color:var(--zc-cream)}
+.theme-light .zc-wordmark{color:var(--zc-navy)}
+.zc-wm-a{color:var(--zc-accent-text)}
+.theme-light .zc-brand{border-color:#e2e8f0}
+/* CTA principales (antes verdes con texto oscuro): violeta con texto blanco, contraste AA */
+.bg-emerald-500{background-color:rgb(var(--zc-600))}
+.hover\:bg-emerald-400:hover{background-color:rgb(var(--zc-700))}
+.bg-emerald-500.text-slate-950,.theme-light .bg-emerald-500.text-slate-950{color:#fff}
+.theme-light .bg-emerald-500,.theme-light .bg-emerald-600,.theme-light .bg-blue-600{background-color:var(--zc-accent)}
+.zf-welcome{--zf-card:#0f172a;--zf-line:#1e293b;--zf-ink:#f1f5f9;--zf-mut:#94a3b8;--zf-pipe:color-mix(in srgb,var(--zc-accent) 28%,transparent);--zf-dot:rgb(var(--zc-400));--zf-val:var(--zc-accent-text);--zf-box:color-mix(in srgb,var(--zc-accent) 14%,#0f172a);
   border:1px solid var(--zf-line);background:var(--zf-card);color:var(--zf-ink);border-radius:1.5rem;padding:1.25rem;margin-bottom:1.5rem;overflow:hidden}
 .theme-light .zf-welcome{--zf-card:#ffffff;--zf-line:#e2e8f0;--zf-ink:#0f172a;--zf-mut:#475569;--zf-pipe:color-mix(in srgb,var(--zc-accent) 22%,#fff);--zf-dot:var(--zc-accent);--zf-val:color-mix(in srgb,var(--zc-accent) 80%,#000);--zf-box:color-mix(in srgb,var(--zc-accent) 8%,#fff);
   box-shadow:0 20px 50px -30px rgba(15,23,42,.25)}
