@@ -431,6 +431,7 @@ function saveRatesToCache(rates, meta) {
 }
 
 function updateRatesStatusUI(date, origin, meta) {
+  try { document.dispatchEvent(new CustomEvent('zeta:rates', { detail: { date: date, origin: origin, meta: meta } })); } catch (e) {}
   const dot = document.getElementById('rate-status-dot');
   const text = document.getElementById('rate-status-text');
   const lastUpdate = document.getElementById('rate-last-update');
@@ -593,6 +594,7 @@ function unlockSimulator(studio, pin) {
   document.getElementById('simulator-screen').classList.remove('hidden');
 
   calculateYield();
+  if (window.zetaWelcomeRender) window.zetaWelcomeRender();
 
   if (window.lucide) {
     lucide.createIcons();

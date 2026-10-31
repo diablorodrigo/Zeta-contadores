@@ -3,6 +3,13 @@
  */
 const ZETA_CONFIG = {
   platformName: "Zeta Finance",
+  // Marca visible de la herramienta. Nombre y logo en un solo lugar (colores en theme.css).
+  brand: {
+    name: "ZCONTADORES",
+    tagline: "Tesorería para estudios contables",
+    logoText: "Z",
+    accent: "#0f766e"
+  },
   adminWhatsapp: "5493496462977", // Teléfono de Zeta Finance (formato internacional sin +)
   // El Sheet de estudios y de leads lo llama el servidor (/api/pin y /api/lead).
   // No va la URL ni la lista de PIN en el navegador. Ver README, "Acceso".
