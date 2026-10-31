@@ -1,0 +1,67 @@
+/* Modo claro: remapea la paleta oscura de Tailwind sin tocar el HTML del simulador. */
+.theme-toggle{display:inline-flex;align-items:center;gap:.4rem;padding:.55rem .75rem;border-radius:.75rem;font-size:.75rem;font-weight:600;border:1px solid #334155;background:#1e293b;color:#e2e8f0;cursor:pointer;transition:background .2s}
+.theme-toggle:hover{background:#334155}
+.theme-toggle .ic-sun{display:inline}.theme-toggle .ic-moon{display:none}
+.theme-light .theme-toggle{background:#fff;border-color:#cbd5e1;color:#0f172a}
+.theme-light .theme-toggle:hover{background:#f1f5f9}
+.theme-light .theme-toggle .ic-sun{display:none}.theme-light .theme-toggle .ic-moon{display:inline}
+.theme-toggle-float{position:absolute;top:1rem;right:1rem;z-index:20}
+
+.theme-light body,.theme-light .bg-slate-950{background-color:#f1f5f9}
+.theme-light .bg-slate-950\/40,.theme-light .bg-slate-950\/50,.theme-light .bg-slate-950\/60{background-color:#f8fafc}
+.theme-light .bg-slate-950\/80{background-color:rgba(15,23,42,.35)}
+.theme-light .bg-slate-900,.theme-light .bg-slate-900\/90,.theme-light .bg-slate-900\/80{background-color:#ffffff}
+.theme-light header.bg-slate-900\/80{background-color:rgba(255,255,255,.85)}
+.theme-light .bg-slate-800,.theme-light .bg-slate-800\/80,.theme-light .bg-slate-800\/50{background-color:#f1f5f9}
+.theme-light .hover\:bg-slate-700:hover,.theme-light .hover\:bg-slate-800:hover{background-color:#e2e8f0}
+.theme-light .border-slate-900,.theme-light .border-slate-800,.theme-light .border-slate-800\/80,.theme-light .border-slate-800\/60{border-color:#e2e8f0}
+.theme-light .border-slate-700,.theme-light .border-slate-700\/60,.theme-light .hover\:border-slate-700:hover{border-color:#cbd5e1}
+.theme-light .border-white\/10{border-color:rgba(15,23,42,.08)}
+.theme-light .text-slate-100,.theme-light .text-slate-200,.theme-light .text-white,.theme-light .hover\:text-white:hover,.theme-light .hover\:text-slate-200:hover{color:#0f172a}
+.theme-light .text-slate-300{color:#334155}
+.theme-light .text-slate-400{color:#475569}
+.theme-light .text-slate-500{color:#64748b}
+.theme-light .text-slate-600{color:#64748b}
+/* Texto blanco sobre botones y fondos de color sólidos se mantiene */
+.theme-light .bg-blue-600.text-white,.theme-light .bg-blue-600 .text-white,.theme-light .bg-blue-500.text-white,.theme-light .bg-emerald-600.text-white,.theme-light .bg-emerald-600 .text-white,.theme-light .bg-emerald-500.text-white,.theme-light .bg-emerald-500 .text-white,
+.theme-light #studio-avatar,.theme-light #studio-avatar *{color:#fff}
+.theme-light .text-slate-950{color:#0f172a}
+.theme-light .text-blue-300,.theme-light .text-blue-400{color:#1d4ed8}
+.theme-light .text-sky-100,.theme-light .text-sky-300,.theme-light .text-sky-400,.theme-light .hover\:text-sky-300:hover{color:#0369a1}
+.theme-light .text-emerald-200,.theme-light .text-emerald-300,.theme-light .text-emerald-400,.theme-light .text-emerald-400\/80{color:#047857}
+.theme-light .text-amber-200,.theme-light .text-amber-300,.theme-light .text-amber-400,.theme-light .text-amber-400\/90{color:#b45309}
+.theme-light .text-rose-400{color:#e11d48}
+.theme-light .bg-emerald-950,.theme-light .bg-emerald-950\/80,.theme-light .bg-emerald-900\/60{background-color:#ecfdf5}
+.theme-light .bg-blue-950,.theme-light .bg-blue-900\/60{background-color:#eff6ff}
+.theme-light .bg-sky-950{background-color:#f0f9ff}
+.theme-light [class*="bg-gradient-to"]{background-image:linear-gradient(135deg,#eff6ff,#ffffff 60%)}
+.theme-light .shadow-2xl,.theme-light .shadow-xl{box-shadow:0 20px 40px -24px rgba(15,23,42,.25)}
+.theme-light input,.theme-light select,.theme-light textarea{color:#0f172a}
+.theme-light .pin-box{background:#fff;border-color:#cbd5e1;color:#0f172a}
+.theme-light input[type=range]::-webkit-slider-thumb{box-shadow:0 2px 6px rgba(15,23,42,.25)}
+
+/* Bienvenida: flujo de la plata */
+/* Identidad ZCONTADORES. Para re-brandear: estas variables + ZETA_CONFIG.brand en config.js. */
+:root{--zc-accent:#0f766e;--zc-accent-ink:#ffffff;--zc-font:var(--zc-font)}
+.zf-welcome{--zf-card:#0f172a;--zf-line:#1e293b;--zf-ink:#f1f5f9;--zf-mut:#94a3b8;--zf-pipe:color-mix(in srgb,var(--zc-accent) 28%,transparent);--zf-dot:color-mix(in srgb,var(--zc-accent) 70%,#fff);--zf-val:color-mix(in srgb,var(--zc-accent) 55%,#fff);--zf-box:color-mix(in srgb,var(--zc-accent) 14%,#0f172a);
+  border:1px solid var(--zf-line);background:var(--zf-card);color:var(--zf-ink);border-radius:1.5rem;padding:1.25rem;margin-bottom:1.5rem;overflow:hidden}
+.theme-light .zf-welcome{--zf-card:#ffffff;--zf-line:#e2e8f0;--zf-ink:#0f172a;--zf-mut:#475569;--zf-pipe:color-mix(in srgb,var(--zc-accent) 22%,#fff);--zf-dot:var(--zc-accent);--zf-val:color-mix(in srgb,var(--zc-accent) 80%,#000);--zf-box:color-mix(in srgb,var(--zc-accent) 8%,#fff);
+  box-shadow:0 20px 50px -30px rgba(15,23,42,.25)}
+.zf-welcome h2{font-size:clamp(1.25rem,3.4vw,1.9rem);font-weight:800;letter-spacing:-.02em;margin:.4rem 0 .3rem;line-height:1.15}
+.zf-welcome .zf-sub{color:var(--zf-mut);font-size:.875rem;max-width:44rem;margin:0}
+.zf-tag{display:inline-block;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--zf-val);border:1px solid var(--zf-line);border-radius:99px;padding:.2rem .6rem}
+.zf-ej{font-size:.68rem;font-weight:700;color:#92400e;background:#fef3c7;border-radius:.35rem;padding:.1rem .4rem;white-space:nowrap}
+.zf-svg{width:100%;height:auto;display:block;margin-top:.75rem}
+.zf-svg .lbl{font:600 14px var(--zc-font);fill:var(--zf-ink)}
+.zf-svg .val{font:800 21px var(--zc-font);fill:var(--zf-val)}
+.zf-svg .sm{font:500 11.5px var(--zc-font);fill:var(--zf-mut)}
+.zf-svg .box{fill:var(--zf-box);stroke:var(--zf-dot)}
+.zf-svg .card{fill:var(--zf-card);stroke:var(--zf-line)}
+.zf-svg .pipe{fill:none;stroke:var(--zf-pipe);stroke-linecap:round}
+.zf-svg .dot{fill:var(--zf-dot)}
+.zf-src{font-size:.72rem;color:var(--zf-mut);margin-top:.75rem;line-height:1.5}
+.zf-actions{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.75rem}
+.zf-btn{font-size:.78rem;font-weight:700;border-radius:.75rem;padding:.55rem .9rem;background:var(--zc-accent);color:var(--zc-accent-ink);border:0;cursor:pointer}
+.zf-btn.ghost{background:transparent;color:var(--zf-ink);border:1px solid var(--zf-line)}
+@media (prefers-reduced-motion:reduce){.zf-svg .dot{display:none}.theme-toggle{transition:none}}
+@media (max-width:640px){.theme-toggle .js-theme-label{display:none}.theme-toggle{padding:.6rem}}
