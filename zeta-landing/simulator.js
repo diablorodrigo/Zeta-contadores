@@ -947,9 +947,9 @@ function updateInstrumentVisuals() {
     badge.textContent = "Plazo Fijo Tradicional";
     badge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30";
   } else if (selectedInstrument === 'cheques' && btnCheques) {
-    btnCheques.className = "p-3.5 rounded-2xl border text-left transition relative bg-violet-500/10 border-violet-500 text-white min-w-0";
+    btnCheques.className = "p-3.5 rounded-2xl border text-left transition relative bg-fuchsia-500/10 border-fuchsia-500 text-white min-w-0";
     badge.textContent = "Descuento de cheques";
-    badge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-violet-500/20 text-violet-300 border border-violet-500/30";
+    badge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30";
   } else if (selectedInstrument === 'macroLetra' && btnMacro) {
     btnMacro.className = "sm:col-span-2 min-w-0 p-3.5 rounded-2xl border text-left transition relative bg-sky-500/10 border-sky-500 text-white";
     const ticker = ZETA_CONFIG.marketRates?.lecapDetails?.ticker || "LECAP";
@@ -1152,11 +1152,11 @@ function setPlazo(days) {
 }
 
 function updatePlazoPills() {
-  const activeBorder = isChequeMode() ? 'border-violet-500' : (isMacroLetraMode() ? 'border-sky-500' : 'border-blue-500');
-  const activeBg = isChequeMode() ? 'bg-violet-500/10' : (isMacroLetraMode() ? 'bg-sky-500/10' : 'bg-blue-500/10');
+  const activeBorder = isChequeMode() ? 'border-fuchsia-500' : (isMacroLetraMode() ? 'border-sky-500' : 'border-blue-500');
+  const activeBg = isChequeMode() ? 'bg-fuchsia-500/10' : (isMacroLetraMode() ? 'bg-sky-500/10' : 'bg-blue-500/10');
   document.querySelectorAll('.plazo-pill').forEach(btn => {
     const d = parseInt(btn.getAttribute('data-days'), 10);
-    btn.classList.remove('border-blue-500', 'bg-blue-500/10', 'border-violet-500', 'bg-violet-500/10', 'border-sky-500', 'bg-sky-500/10', 'border-slate-700', 'bg-slate-800');
+    btn.classList.remove('border-blue-500', 'bg-blue-500/10', 'border-fuchsia-500', 'bg-fuchsia-500/10', 'border-sky-500', 'bg-sky-500/10', 'border-slate-700', 'bg-slate-800');
     if (d === currentPlazo) {
       btn.classList.add(activeBorder, activeBg);
     } else {
@@ -1565,7 +1565,7 @@ function syncChequeMode() {
   const slider = document.getElementById('slider-plazo');
   if (slider) {
     slider.max = cheque ? '180' : ((macro || lecapInst) ? '365' : '35');
-    slider.classList.toggle('accent-violet-500', cheque);
+    slider.classList.toggle('accent-fuchsia-500', cheque);
     slider.classList.toggle('accent-sky-500', macro);
     slider.classList.toggle('accent-blue-500', !cheque && !macro);
   }
@@ -1994,7 +1994,7 @@ function renderChequeWait(scenario) {
   }));
 
   const curve = letters.map((row) => {
-    const mark = letter && row.ticker === letter.ticker ? ' text-violet-200' : '';
+    const mark = letter && row.ticker === letter.ticker ? ' text-fuchsia-200' : '';
     return `<span class="inline-block mr-2${mark}">${escapeHtml(row.ticker)} ${formatPercentPoints(row.tna)}/${formatPercentPoints(row.tea)}${row.stale ? '*' : ''}</span>`;
   }).join('');
   if (curve) {

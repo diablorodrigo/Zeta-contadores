@@ -8,7 +8,12 @@ const ZETA_CONFIG = {
     name: "ZCONTADORES",
     tagline: "Tesorería para estudios contables",
     logoText: "Z",
-    accent: "#0f766e"
+    accent: "#5B21B6", // violeta profundo del logo B2; la escala completa está en theme.css (--zc-50 … --zc-950)
+    logo: {
+      light: "assets/brand/zc-icono-claro.svg", // ícono para modo claro
+      dark: "assets/brand/zc-icono-oscuro.svg"  // ícono para modo oscuro
+    },
+    favicon: "assets/brand/favicon.svg"
   },
   adminWhatsapp: "5493496462977", // Teléfono de Zeta Finance (formato internacional sin +)
   // El Sheet de estudios y de leads lo llama el servidor (/api/pin y /api/lead).

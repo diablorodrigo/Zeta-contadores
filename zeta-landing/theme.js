@@ -10,7 +10,7 @@
     root.classList.toggle('theme-dark', theme !== 'light');
     root.style.colorScheme = theme === 'light' ? 'light' : 'dark';
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', theme === 'light' ? '#f8fafc' : '#020617');
+    if (meta) meta.setAttribute('content', theme === 'light' ? '#F7F6F2' : '#0E1525');
     var btns = document.querySelectorAll('.js-theme-toggle');
     for (var i = 0; i < btns.length; i++) {
       btns[i].setAttribute('aria-pressed', theme === 'light' ? 'true' : 'false');
