@@ -98,9 +98,11 @@ const ZETA_CONFIG = {
   // iva en decimal (0.21 = 21%). Las fórmulas están en broker-costs.js.
   // Letras: una sola compra, sin venta. Derechos BYMA agosto 2026, contado
   // PPT letras 0,0010%, sin IVA (título público).
-  // Caución colocadora en pesos: comisión 0,50% TNA (anual, por días/365), más IVA.
-  // Derecho BYMA de caución 0,0450% proporcional hasta 90 días, sobre el
-  // mayor valor, más IVA.
+  // Caución colocadora en pesos: arancel del broker como TNA (anual, por
+  // días/365), más IVA. Se elige con caucion.broker; cada broker tiene su valor
+  // en caucion.porBroker.
+  // Derecho BYMA de caución 0,0450% proporcional hasta 90 días, más IVA.
+  // La boleta IOL lo aplica sobre el capital contado (derechosBase "contado").
   brokerCosts: {
     label: "Balanz",
     nota: "Comisiones de referencia: Balanz, editable",
@@ -111,7 +113,15 @@ const ZETA_CONFIG = {
       derechosPct: 0.001
     },
     caucion: {
-      comisionTnaPct: 0.50, // TNA anual, no por 90 días
+      broker: "IOL",
+      porBroker: {
+        // Boleta IOL: 1 día, $6.023.776 -> arancel $297,06 (0,0049% = 1,80%/365).
+        IOL: { arancelTnaPct: 1.80, nota: "Confirmado con boleta IOL, 1,80% TNA + IVA" },
+        // Tarifario web: "hasta 0.50% con detalle de prorrata (cada 90 días)".
+        Balanz: { arancelTnaPct: 0.50, nota: "Pendiente de confirmar con boleta" }
+      },
+      reinversion: true,
+      derechosBase: "contado",
       aplicaIva: true,
       derechosPct90: 0.045,
       derechosConIva: true
