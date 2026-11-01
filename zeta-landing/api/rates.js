@@ -62,6 +62,9 @@ const DEPOSITOS_30_URL = 'https://api.argentinadatos.com/v1/finanzas/tasas/depos
 const PLAZO_FIJO_ENTIDADES_URL = 'https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo';
 const FCI_HISTORICO_URL = 'https://api.argentinadatos.com/v1/finanzas/fci/fondos/balanz-capital-money-market-clase-a/historico';
 const BCRA_MONETARIAS_URL = 'https://api.bcra.gob.ar/estadisticas/v4.0/monetarias?limit=3000';
+// Última rueda cerrada (o la de hoy si está abierta), en hora de Buenos Aires.
+const lastCloseIso = (now) => quoteCalendar(now).tradeDate;
+
 const FCI_NOMBRE = 'Balanz Capital Money Market - Clase A';
 
 export default async function handler(req, res) {
@@ -70,30 +73,37 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 's-maxage=1800, stale-while-revalidate=60');
 
   const fallbackRates = {
+    // Referencia: último cierre 30/10/2026 (ArgentinaDatos). Igual que config.js.
     caucionByDays: {
-      3: 20.5,
-      7: 21.5,
-      10: 22.0,
-      15: 22.5,
-      30: 23.5
+      3: 21.0,
+      7: 20.5,
+      10: 20.1,
+      15: 19.2,
+      30: 22.8
     },
+    caucionDetails: { fuente: 'referencia', fecha: '2026-10-30' },
     plazoFijoTNA: 19.5,
     plazoFijoDetails: { fuente: 'referencia', fecha: null },
-    // Cierre del viernes 23/10/2026, S30N6. Mismo cálculo que lecap-yields.js.
-    // Solo se ve si Data912 y BYMA no traen una letra con precio y payoff.
-    lecapTNA: 22.96,
+    // Respaldo ("referencia") si Data912 y BYMA no traen precio. Cierre del
+    // 30/10/2026, Data912, precio ask, liquidación 02/11. Referencia S30N6
+    // (28 días): TNA 23,08%, TEA 25,71%, TEM de mercado 1,90% (la de emisión
+    // es 2,30%). Paga 129,89 cada 100 nominales el 30/11/2026.
+    lecapTNA: 23.08,
     lecapDetails: {
       ticker: "S30N6",
       maturity: "2026-11-30",
       vencimiento: "30/11/2026",
       nombre: "LECAP Vto. 30/11/2026",
-      diasAlVencimiento: 35,
-      precio: 127.09,
+      diasAlVencimiento: 28,
+      settlement: "2026-11-02",
+      precio: 127.63,
+      precioFuente: "ask",
       payoffPor100: 129.89,
       temPct: 2.30,
-      tna: 22.96,
-      tea: 25.50,
-      tir: 25.50,
+      temMercado: 1.90,
+      tna: 23.08,
+      tea: 25.71,
+      tir: 25.71,
       fuente: "config"
     },
     lecaps: [],
@@ -140,6 +150,7 @@ export default async function handler(req, res) {
     const bymaCurve = bucketCaucionQuotes(bymaQuotes, fallbackRates.caucionByDays);
     if (bymaCurve.filledBuckets > 0) {
       liveRates.caucionByDays = bymaCurve.caucionByDays;
+      liveRates.caucionDetails = { fuente: 'byma', fecha: null };
       sourcesChecked.push('cauciones_byma');
     } else if (Array.isArray(argentinaRows) && argentinaRows.length > 0) {
       const adCurve = bucketCaucionQuotes(
@@ -148,6 +159,8 @@ export default async function handler(req, res) {
       );
       if (adCurve.filledBuckets > 0) {
         liveRates.caucionByDays = adCurve.caucionByDays;
+        // BYMA no respondió: es el último cierre, no una tasa en rueda.
+        liveRates.caucionDetails = { fuente: 'argentinadatos', fecha: lastCloseIso(new Date()) };
         sourcesChecked.push('cauciones_argentinadatos');
       }
     }

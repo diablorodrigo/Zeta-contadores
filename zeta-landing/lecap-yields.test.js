@@ -133,7 +133,7 @@ test('la curva del 24/10/2026 calcula TNA, TEA y TIR de cada letra', () => {
   assert.equal(curve.source, 'data912');
   assert.equal(curve.reference.ticker, 'S30N6');
   assert.equal(curve.reference.dias, 35);
-  assert.equal(curve.reference.tna, 22.96);
+  assert.equal(curve.reference.tna, 22.98);
   assert.deepEqual(
     curve.letters.map((letter) => letter.ticker),
     ['S30O6', 'S13N6', 'S30N6', 'S29E7']
@@ -142,26 +142,29 @@ test('la curva del 24/10/2026 calcula TNA, TEA y TIR de cada letra', () => {
   const byTicker = Object.fromEntries(curve.letters.map((letter) => [letter.ticker, letter]));
   assert.equal(byTicker.S30O6.dias, 4);
   assert.equal(byTicker.S30O6.payoffPor100, 135.28);
-  assert.equal(byTicker.S30O6.tna, 19.55);
-  assert.equal(byTicker.S30O6.tea, 21.57);
-  assert.equal(byTicker.S30O6.tir, 21.57);
+  assert.equal(byTicker.S30O6.tna, 19.67);
+  assert.equal(byTicker.S30O6.tea, 21.71);
+  assert.equal(byTicker.S30O6.tir, 21.71);
 
   assert.equal(byTicker.S13N6.dias, 18);
   assert.equal(byTicker.S13N6.payoffPor100, 109.65);
-  assert.equal(byTicker.S13N6.tna, 22.75);
-  assert.equal(byTicker.S13N6.tea, 25.38);
+  // Precio = ask (108,438), no el último (108,435).
+  assert.equal(byTicker.S13N6.precio, 108.438);
+  assert.equal(byTicker.S13N6.precioFuente, 'ask');
+  assert.equal(byTicker.S13N6.tna, 22.66);
+  assert.equal(byTicker.S13N6.tea, 25.28);
   assert.equal(byTicker.S13N6.tir, byTicker.S13N6.tea);
 
   assert.equal(byTicker.S30N6.dias, 35);
   assert.equal(byTicker.S30N6.payoffPor100, 129.89);
-  assert.equal(byTicker.S30N6.tna, 22.96);
-  assert.equal(byTicker.S30N6.tea, 25.50);
-  assert.equal(byTicker.S30N6.tir, 25.50);
+  assert.equal(byTicker.S30N6.tna, 22.98);
+  assert.equal(byTicker.S30N6.tea, 25.52);
+  assert.equal(byTicker.S30N6.tir, 25.52);
 
   assert.equal(byTicker.S29E7.dias, 95);
   assert.equal(byTicker.S29E7.payoffPor100, 111.68);
-  assert.equal(byTicker.S29E7.tna, 24.73);
-  assert.equal(byTicker.S29E7.tea, 27.08);
+  assert.equal(byTicker.S29E7.tna, 24.64);
+  assert.equal(byTicker.S29E7.tea, 26.97);
 });
 
 test('bajo 30 días no se usa como referencia si hay una letra que llega al plazo fijo', () => {
@@ -318,4 +321,42 @@ test('un sábado la referencia de 30 días sigue siendo S30N6 aunque la liquidac
   const curve = buildLecapCurve({ data912Rows: DATA912_FRIDAY, now: new Date('2026-10-31T23:00:00.000Z') });
   assert.equal(curve.reference.ticker, 'S30N6');
   assert.equal(curve.reference.diasHoy, 30);
+});
+
+test('auditoría 30/10: ask de Data912, liquidación 02/11, TNA, TEM de mercado y neta (Finanzas AR)', () => {
+  const { calcLetraNeta } = require('./macro-vs-letra.js');
+  const rows = [
+    { symbol: 'S13N6', c: 108.907, v: 1, px_bid: 108.877, px_ask: 108.907 },
+    { symbol: 'S30N6', c: 127.63, v: 1, px_bid: 127.603, px_ask: 127.630 },
+    { symbol: 'S29E7', c: 105.38, v: 1, px_bid: 105.360, px_ask: 105.380 }
+  ];
+  const curve = buildLecapCurve({ now: new Date('2026-10-31T00:37:00.000Z'), data912Rows: rows, bymaRows: [], fichas: {} });
+  const by = Object.fromEntries(curve.letters.map((l) => [l.ticker, l]));
+  const fees = { comisionPct: 0.10, aplicaIva: true, iva: 0.21, derechosPct: 0.001 };
+  const cases = [['S30N6', 28, 23.08, 21.47, 1.90], ['S13N6', 11, 22.64, 18.57, 1.87], ['S29E7', 88, 24.80, 24.26, 2.00]];
+  for (const [t, dias, tna, neta, tem] of cases) {
+    assert.equal(by[t].settlement, '2026-11-02');
+    assert.equal(by[t].dias, dias);
+    assert.equal(by[t].tna, tna);
+    assert.equal(by[t].temMercado, tem);
+    assert.equal(by[t].precioFuente, 'ask');
+    // La TNA se aplica a los mismos días desde la liquidación, no a diasHoy.
+    const q = calcLetraNeta(1000000, by[t].dias, by[t].tna, fees);
+    assert.ok(Math.abs(q.tnaNeta - neta) < 0.015, t + ' ' + q.tnaNeta);
+    // Interés = VF/precio, sin inflar por los días del fin de semana.
+    const directo = 1000000 * (by[t].payoffPor100 / by[t].precio / (1 + 0.00122) - 1);
+    assert.ok(Math.abs(q.interes - directo) < 10); // TNA redondeada a 2 decimales
+  }
+});
+
+test('sin ask se usa el último y se marca la fuente', () => {
+  const merged = mergeLecapPrices([{ symbol: 'S30N6', c: 127.5, v: 1, px_bid: 0, px_ask: 0 }], []);
+  assert.equal(merged.S30N6.price, 127.5);
+  assert.equal(merged.S30N6.priceField, 'ultimo');
+});
+
+test('el respaldo LECAP ya no trae S30O6 vencida', () => {
+  const { LECAP_CONFIG_FALLBACK } = require('./lecap-yields.js');
+  assert.ok(!LECAP_CONFIG_FALLBACK.some((l) => l.ticker === 'S30O6'));
+  assert.equal(LECAP_CONFIG_FALLBACK.find((l) => l.ticker === 'S30N6').precio, 127.63);
 });

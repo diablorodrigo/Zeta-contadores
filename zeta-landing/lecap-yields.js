@@ -94,14 +94,14 @@ var LECAP_SOURCE_LABEL = {
   config: 'config'
 };
 
-// Respaldo si Data912 y BYMA no traen precio. Mismos números que config.js
-// (cierre del 23/10/2026). El menú descarta la que ya venció: no se usa el
-// campo dias, que es una foto de aquella liquidación.
+// Respaldo ("referencia") si Data912 y BYMA no traen precio. Mismos números
+// que config.js. El menú descarta la que ya venció. TNA y dias son de la misma
+// liquidación (02/11): la cuenta usa esos días, no los que faltan desde hoy.
 var LECAP_CONFIG_FALLBACK = [
-  { ticker: 'S30O6', tna: 19.55, tea: 21.57, tir: 21.57, dias: 4, maturity: '2026-10-30', vencimiento: '30/10/2026', precio: 134.989, payoffPor100: 135.28, temPct: 2.55, fuente: 'config' },
-  { ticker: 'S13N6', tna: 22.75, tea: 25.38, tir: 25.38, dias: 18, maturity: '2026-11-13', vencimiento: '13/11/2026', precio: 108.435, payoffPor100: 109.65, temPct: 2.10, fuente: 'config' },
-  { ticker: 'S30N6', tna: 22.96, tea: 25.50, tir: 25.50, dias: 35, maturity: '2026-11-30', vencimiento: '30/11/2026', precio: 127.09, payoffPor100: 129.89, temPct: 2.30, fuente: 'config' },
-  { ticker: 'S29E7', tna: 24.73, tea: 27.08, tir: 27.08, dias: 95, maturity: '2027-01-29', vencimiento: '29/01/2027', precio: 104.932, payoffPor100: 111.68, temPct: 2.25, fuente: 'config' }
+  // Referencia: cierre del 30/10/2026, Data912, precio ask, liquidación 02/11.
+  { ticker: 'S13N6', tna: 22.64, tea: 25.31, tir: 25.31, temMercado: 1.87, dias: 11, settlement: '2026-11-02', maturity: '2026-11-13', vencimiento: '13/11/2026', precio: 108.907, precioFuente: 'ask', payoffPor100: 109.65, temPct: 2.10, fuente: 'config' },
+  { ticker: 'S30N6', tna: 23.08, tea: 25.71, tir: 25.71, temMercado: 1.90, dias: 28, settlement: '2026-11-02', maturity: '2026-11-30', vencimiento: '30/11/2026', precio: 127.63, precioFuente: 'ask', payoffPor100: 129.89, temPct: 2.30, fuente: 'config' },
+  { ticker: 'S29E7', tna: 24.80, tea: 27.23, tir: 27.23, temMercado: 2.00, dias: 88, settlement: '2026-11-02', maturity: '2027-01-29', vencimiento: '29/01/2027', precio: 105.38, precioFuente: 'ask', payoffPor100: 111.68, temPct: 2.25, fuente: 'config' }
 ];
 
 // Diferencia máxima, en días corridos, para tratar el calce como comparable.
@@ -299,16 +299,21 @@ function usableLecapPrice(value) {
 
 function priceFromData912Row(row) {
   if (!row || !isLecapTicker(row.symbol)) return null;
-  var last = usableLecapPrice(row.c);
-  if (last == null) {
-    var bid = lecapFinite(row.px_bid);
-    var ask = lecapFinite(row.px_ask);
-    if (bid != null && ask != null && bid > 0 && ask > 0) last = usableLecapPrice((bid + ask) / 2);
+  // Quien compra paga el ask. Último operado o promedio solo si no hay ask.
+  var bid = lecapFinite(row.px_bid);
+  var ask = lecapFinite(row.px_ask);
+  var field = 'ask';
+  var last = ask != null && ask > 0 ? usableLecapPrice(ask) : null;
+  if (last == null) { field = 'ultimo'; last = usableLecapPrice(row.c); }
+  if (last == null && bid != null && ask != null && bid > 0 && ask > 0) {
+    field = 'promedio';
+    last = usableLecapPrice((bid + ask) / 2);
   }
   if (last == null) return null;
   return {
     ticker: String(row.symbol).toUpperCase(),
     price: last,
+    priceField: field,
     volume: lecapFinite(row.v) || 0,
     source: 'data912'
   };
@@ -325,11 +330,12 @@ function priceFromBymaLebacRow(row) {
   var close = lecapFinite(row.closingPrice);
   var previous = lecapFinite(row.previousClosingPrice);
   var raw = null;
-  if (trade != null && trade > 0) raw = trade;
-  else if (vwap != null && vwap > 0) raw = vwap;
-  else if (bid != null && bid > 0 && offer != null && offer > 0) raw = (bid + offer) / 2;
-  else if (close != null && close > 0) raw = close;
-  else if (previous != null && previous > 0) raw = previous;
+  var field = null;
+  if (offer != null && offer > 0) { raw = offer; field = 'ask'; }
+  else if (trade != null && trade > 0) { raw = trade; field = 'ultimo'; }
+  else if (vwap != null && vwap > 0) { raw = vwap; field = 'promedio'; }
+  else if (close != null && close > 0) { raw = close; field = 'ultimo'; }
+  else if (previous != null && previous > 0) { raw = previous; field = 'ultimo'; }
   var price = usableLecapPrice(raw);
   if (price == null) return null;
   var volume = lecapFinite(row.tradeVolume);
@@ -337,6 +343,7 @@ function priceFromBymaLebacRow(row) {
   return {
     ticker: String(row.symbol).toUpperCase(),
     price: price,
+    priceField: field,
     volume: volume,
     source: 'byma'
   };
@@ -376,6 +383,8 @@ function yieldFromPrice(price, payoffExact, days) {
   if (!(tna > 0 && tna < 80 && tea > 0 && tea < 150)) return null;
   var teaRounded = lecapRound(tea, 2);
   return {
+    // TEM de mercado: la que rinde hoy al precio de compra. No es la TEM de emisión.
+    temMercado: lecapRound((Math.pow(ratio, 30 / days) - 1) * 100, 2),
     tna: lecapRound(tna, 2),
     tea: teaRounded,
     tir: teaRounded
@@ -397,14 +406,18 @@ function buildLecapCurve(input) {
     var diasHoy = daysBetweenIso(calendar.artDate, terms.maturity);
     if (!(diasHoy >= 1)) return;
     var days = daysBetweenIso(calendar.settlement, terms.maturity);
-    var yields = yieldFromPrice(prices[ticker].price, terms.payoffExact, days);
+    // Valor final publicado (2 decimales cada 100 VN), como Finanzas AR.
+    var yields = yieldFromPrice(prices[ticker].price, terms.payoffPor100 || terms.payoffExact, days);
     if (!yields) return;
     letters.push({
       ticker: ticker,
       precio: lecapRound(prices[ticker].price, 3),
       volumen: prices[ticker].volume,
       fuente: prices[ticker].source,
+      precioFuente: prices[ticker].priceField || 'ultimo',
       temPct: terms.temPct,
+      temEmisionPct: terms.temPct,
+      temMercado: yields.temMercado,
       temSource: terms.temSource,
       emision: terms.issue,
       maturity: terms.maturity,
@@ -634,6 +647,8 @@ function lecapDetailsFromReference(reference) {
     precio: reference.precio,
     payoffPor100: reference.payoffPor100,
     temPct: reference.temPct,
+    temMercado: reference.temMercado,
+    precioFuente: reference.precioFuente,
     tna: reference.tna,
     tea: reference.tea,
     tir: reference.tir,

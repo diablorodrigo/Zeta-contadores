@@ -42,39 +42,46 @@ const ZETA_CONFIG = {
   // ArgentinaDatos /cauciones/ars suele devolver [] (snapshot IOL vacío): no
   // es la fuente primaria.
   marketRates: {
+    // Referencia: último cierre 30/10/2026 (ArgentinaDatos, snapshot IOL). Sin
+    // plazos exactos 7/10/15/30: 3d 21,0; 5-6d 20,5; 12d 20,1; 14d 19,2;
+    // 28d 20,7; 31d 22,8; 60d 20,0. Los baldes toman el plazo más cercano,
+    // como el código en vivo (30 -> 31d, 22,8%).
     caucionByDays: {
-      3: 20.5,   // Fin de semana (3 días) - respaldo editable
-      7: 21.5,   // 7 días
-      10: 22.0,  // 10 días
-      15: 22.5,  // 15 días
-      30: 23.5   // 30 días
+      3: 21.0,
+      7: 20.5,
+      10: 20.1,
+      15: 19.2,
+      30: 22.8
     },
+    caucionDetails: { fuente: "referencia", fecha: "2026-10-30" },
     defaultCaucionTNA: 21.5,
-    plazoFijoTNA: 19.5, // Promedio grandes bancos a 30 días (~19.5% TNA)
-    // Respaldo si Data912 y BYMA no traen precio. Cierre del 23/10/2026.
-    // La referencia es S30N6 (35 días): la más corta que llega al mínimo
-    // del plazo fijo. TNA simple 22,96%. La TIR de esa letra es 25,50%.
-    // Paga 129,89 cada 100 nominales el 30/11/2026 (TEM 2,30%).
-    lecapTNA: 22.96,
+    plazoFijoTNA: 19.5, // Referencia: Banco Macro vigente 30-59 días, 19,5% (< $5M) / 20% (>= $5M)
+    // Respaldo ("referencia") si Data912 y BYMA no traen precio. Cierre del
+    // 30/10/2026, Data912, precio ask, liquidación 02/11. Referencia S30N6
+    // (28 días): TNA 23,08%, TEA 25,71%, TEM de mercado 1,90% (la de emisión
+    // es 2,30%). Paga 129,89 cada 100 nominales el 30/11/2026.
+    lecapTNA: 23.08,
     lecapDetails: {
       ticker: "S30N6",
       maturity: "2026-11-30",
       vencimiento: "30/11/2026",
       nombre: "LECAP Vto. 30/11/2026",
-      diasAlVencimiento: 35,
-      precio: 127.09,
+      diasAlVencimiento: 28,
+      settlement: "2026-11-02",
+      precio: 127.63,
+      precioFuente: "ask",
       payoffPor100: 129.89,
       temPct: 2.30,
-      tna: 22.96,
-      tea: 25.50,
-      tir: 25.50,
+      temMercado: 1.90,
+      tna: 23.08,
+      tea: 25.71,
+      tir: 25.71,
       fuente: "config"
     },
     lecaps: [
-      { ticker: "S30O6", tna: 19.55, tea: 21.57, tir: 21.57, dias: 4, maturity: "2026-10-30", vencimiento: "30/10/2026", precio: 134.989, payoffPor100: 135.28, fuente: "config" },
-      { ticker: "S13N6", tna: 22.75, tea: 25.38, tir: 25.38, dias: 18, maturity: "2026-11-13", vencimiento: "13/11/2026", precio: 108.435, payoffPor100: 109.65, fuente: "config" },
-      { ticker: "S30N6", tna: 22.96, tea: 25.50, tir: 25.50, dias: 35, maturity: "2026-11-30", vencimiento: "30/11/2026", precio: 127.09, payoffPor100: 129.89, fuente: "config" },
-      { ticker: "S29E7", tna: 24.73, tea: 27.08, tir: 27.08, dias: 95, maturity: "2027-01-29", vencimiento: "29/01/2027", precio: 104.932, payoffPor100: 111.68, fuente: "config" }
+      { ticker: "S13N6", tna: 22.64, tea: 25.31, tir: 25.31, temMercado: 1.87, dias: 11, settlement: "2026-11-02", maturity: "2026-11-13", vencimiento: "13/11/2026", precio: 108.907, precioFuente: "ask", payoffPor100: 109.65, fuente: "config" },
+      { ticker: "S30N6", tna: 23.08, tea: 25.71, tir: 25.71, temMercado: 1.90, dias: 28, settlement: "2026-11-02", maturity: "2026-11-30", vencimiento: "30/11/2026", precio: 127.63, precioFuente: "ask", payoffPor100: 129.89, fuente: "config" },
+      { ticker: "S29E7", tna: 24.80, tea: 27.23, tir: 27.23, temMercado: 2.00, dias: 88, settlement: "2026-11-02", maturity: "2027-01-29", vencimiento: "29/01/2027", precio: 105.38, precioFuente: "ask", payoffPor100: 111.68, fuente: "config" }
     ],
     usdRateAnnual: 5.0, // Tasa fija en dólares
     // Respaldo del FCI de liquidez. Cuotaparte de Balanz Capital Money Market
