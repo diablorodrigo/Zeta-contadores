@@ -186,6 +186,7 @@ async function fetchDirectArgentinaDatos() {
         const val = parseFloat(last.valor || last.tna);
         if (!isNaN(val) && val > 15) {
           ZETA_CONFIG.marketRates.plazoFijoTNA = parseFloat(val.toFixed(1));
+          ZETA_CONFIG.marketRates.plazoFijoDetails = { fuente: 'bcra', fecha: last.fecha || null };
           updated = true;
         }
       }
@@ -362,6 +363,7 @@ function applyFetchedRates(newRates, timestamp, origin, meta) {
     ZETA_CONFIG.marketRates.caucionByDays = { ...ZETA_CONFIG.marketRates.caucionByDays, ...newRates.caucionByDays };
   }
   if (newRates.plazoFijoTNA) ZETA_CONFIG.marketRates.plazoFijoTNA = newRates.plazoFijoTNA;
+  ZETA_CONFIG.marketRates.plazoFijoDetails = newRates.plazoFijoDetails || { fuente: 'referencia' };
   if (newRates.lecapTNA) ZETA_CONFIG.marketRates.lecapTNA = newRates.lecapTNA;
   if (newRates.lecapDetails && newRates.lecapDetails.ticker && newRates.lecapDetails.diasAlVencimiento) {
     ZETA_CONFIG.marketRates.lecapDetails = { ...newRates.lecapDetails };
@@ -821,13 +823,16 @@ function updateInstrumentRates() {
   const horizon = (selectedInstrument === 'cheques' || selectedInstrument === 'macroLetra')
     ? liquidityPlazo
     : currentPlazo;
-  const lecapQuote = netQuote('lecap', rates.lecapTNA, horizon);
   const fciQuote = netQuote('fci', rates.fciTNA, horizon);
-  const lecapBadge = document.getElementById('rate-badge-lecap');
-  if (lecapBadge) {
-    lecapBadge.textContent = `${formatLecapTna(lecapQuote && lecapQuote.tnaNeta != null ? lecapQuote.tnaNeta : rates.lecapTNA)}%`;
-  }
   document.getElementById('rate-badge-plazofijo').textContent = `${rates.plazoFijoTNA.toFixed(1)}%`;
+  const pfSource = document.getElementById('plazofijo-source-label');
+  if (pfSource) {
+    const pfd = rates.plazoFijoDetails || {};
+    const live = pfd.fuente === 'bcra';
+    pfSource.textContent = live
+      ? `BCRA dep. 30 días${pfd.fecha ? ' · ' + shortVencimiento(pfd.fecha) : ''}`
+      : 'referencia (sin actualizar)';
+  }
   const fciBadge = document.getElementById('rate-badge-fci');
   if (fciBadge) {
     fciBadge.textContent = `${formatLecapTna(fciQuote && fciQuote.tnaNeta != null ? fciQuote.tnaNeta : rates.fciTNA)}%`;
@@ -843,14 +848,7 @@ function updateInstrumentRates() {
     fciSource.textContent = details.fecha ? `${source} · ${details.fecha}` : source;
   }
 
-  if (rates.lecapDetails) {
-    const pill = document.getElementById('lecap-ticker-pill');
-    const vto = document.getElementById('lecap-vto-label');
-    const sourceLabel = document.getElementById('lecap-source-label');
-    if (pill && rates.lecapDetails.ticker) pill.textContent = rates.lecapDetails.ticker;
-    if (vto && rates.lecapDetails.vencimiento) vto.textContent = rates.lecapDetails.vencimiento;
-    if (sourceLabel) sourceLabel.textContent = `Bruta ${formatLecapTna(rates.lecapTNA)}% · ${lecapSourceCaption(rates.lecapDetails)}`;
-  }
+  refreshLecapCards();
   renderLecapCurve();
 
   const curveDays = (selectedInstrument === 'cheques' || selectedInstrument === 'macroLetra')
@@ -860,10 +858,29 @@ function updateInstrumentRates() {
   updateCaucionPillRates();
   refreshMacroVtoPill();
 
+}
+
+function refreshLecapCards() {
+  const rates = ZETA_CONFIG.marketRates;
+  const activeLetter = activeLecapLetter();
+  const lecapQuote = netQuote('lecap', activeLetter.tna, activeLetter.dias);
+  const lecapBadge = document.getElementById('rate-badge-lecap');
+  if (lecapBadge) {
+    lecapBadge.textContent = `${formatLecapTna(lecapQuote && lecapQuote.tnaNeta != null ? lecapQuote.tnaNeta : activeLetter.tna)}%`;
+  }
+  if (rates.lecapDetails) {
+    const pill = document.getElementById('lecap-ticker-pill');
+    const vto = document.getElementById('lecap-vto-label');
+    const sourceLabel = document.getElementById('lecap-source-label');
+    if (pill && activeLetter.ticker) pill.textContent = activeLetter.ticker;
+    if (vto && activeLetter.vencimiento) vto.textContent = activeLetter.vencimiento;
+    if (sourceLabel) sourceLabel.textContent = `Bruta ${formatLecapTna(activeLetter.tna)}% · ${activeLetter.dias}d · ${lecapSourceCaption(rates.lecapDetails)}`;
+  }
+
   const macroBadge = document.getElementById('macro-letra-badge');
   if (macroBadge) {
-    const macroQuote = netQuote('lecap', rates.lecapTNA, letraDaysFromConfig());
-    macroBadge.textContent = `${formatLecapTna(macroQuote && macroQuote.tnaNeta != null ? macroQuote.tnaNeta : rates.lecapTNA)}%`;
+    const macroQuote = netQuote('lecap', activeLetter.tna, activeLetter.dias);
+    macroBadge.textContent = `${formatLecapTna(macroQuote && macroQuote.tnaNeta != null ? macroQuote.tnaNeta : activeLetter.tna)}%`;
   }
 }
 
@@ -934,7 +951,7 @@ function updateInstrumentVisuals() {
     badge.textContent = "Caución Bursátil (BYMA)";
     badge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30";
   } else if (selectedInstrument === 'lecap') {
-    const ticker = ZETA_CONFIG.marketRates?.lecapDetails?.ticker || "S30N6";
+    const ticker = activeLecapLetter().ticker;
     btnLecap.className = "p-3.5 rounded-2xl border text-left transition relative bg-emerald-500/10 border-emerald-500 text-white";
     badge.textContent = `LECAP Corta (${ticker})`;
     badge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
@@ -952,7 +969,7 @@ function updateInstrumentVisuals() {
     badge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30";
   } else if (selectedInstrument === 'macroLetra' && btnMacro) {
     btnMacro.className = "sm:col-span-2 min-w-0 p-3.5 rounded-2xl border text-left transition relative bg-sky-500/10 border-sky-500 text-white";
-    const ticker = ZETA_CONFIG.marketRates?.lecapDetails?.ticker || "LECAP";
+    const ticker = activeLecapLetter().ticker || "LECAP";
     badge.textContent = `Macro vs ${ticker}`;
     badge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30";
   }
@@ -1278,6 +1295,8 @@ function initTaxToggles() {
 }
 
 function calculateYield() {
+  // Las tarjetas de la letra siguen a la letra y al plazo elegidos.
+  refreshLecapCards();
   if (isChequeMode()) {
     renderChequeExperience();
     return;
@@ -1330,7 +1349,7 @@ function calculateYield() {
   }
 
   // Actualizar Modal
-  const lecapTicker = ZETA_CONFIG.marketRates?.lecapDetails?.ticker || "S30N6";
+  const lecapTicker = activeLecapLetter().ticker;
   const instNames = {
     caucion: "Caución Bursátil",
     lecap: `LECAP (${lecapTicker})`,
@@ -2086,6 +2105,19 @@ function escapeHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// Letra que se está mirando: la elegida (modo por letra) o la que corresponde al plazo.
+// Tarjeta, insignias y modal usan esta, no la "referencia" del API (que puede ser otra letra).
+function activeLecapLetter() {
+  const rates = ZETA_CONFIG.marketRates || {};
+  let letter = null;
+  try { letter = currentLecapPick().letter; } catch (e) { letter = null; }
+  if (letter && isFinite(Number(letter.tna))) {
+    return { ticker: letter.ticker, vencimiento: letter.vencimiento || '', tna: Number(letter.tna), dias: letter.diasHoy };
+  }
+  const details = rates.lecapDetails || {};
+  return { ticker: details.ticker || 'S30N6', vencimiento: details.vencimiento || '', tna: Number(rates.lecapTNA), dias: letraDaysFromConfig() };
 }
 
 function letraDaysFromConfig() {

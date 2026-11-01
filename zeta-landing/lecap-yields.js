@@ -429,7 +429,7 @@ function buildLecapCurve(input) {
   if (minDays == null) minDays = 30;
   var reference = null;
   for (var i = 0; i < letters.length; i++) {
-    if (letters[i].dias >= minDays) {
+    if (letters[i].diasHoy >= minDays) {
       reference = letters[i];
       break;
     }

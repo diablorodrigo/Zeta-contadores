@@ -78,6 +78,7 @@ export default async function handler(req, res) {
       30: 23.5
     },
     plazoFijoTNA: 19.5,
+    plazoFijoDetails: { fuente: 'referencia', fecha: null },
     // Cierre del viernes 23/10/2026, S30N6. Mismo cálculo que lecap-yields.js.
     // Solo se ve si Data912 y BYMA no traen una letra con precio y payoff.
     lecapTNA: 22.96,
@@ -156,6 +157,7 @@ export default async function handler(req, res) {
       const tnaPf = parseFloat(latest.valor || latest.tna);
       if (!isNaN(tnaPf) && tnaPf > 15 && tnaPf < 90) {
         liveRates.plazoFijoTNA = parseFloat(tnaPf.toFixed(1));
+        liveRates.plazoFijoDetails = { fuente: 'bcra', fecha: latest.fecha || null };
         sourcesChecked.push('plazofijo_live');
       }
     }
