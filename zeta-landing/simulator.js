@@ -813,6 +813,22 @@ function updateCaucionRateForDays(days) {
   if (label && quote && quote.tnaNeta != null) {
     label.textContent = `Bruta ${Number(tna).toFixed(2)}% · neta ${formatLecapTna(quote.tnaNeta)}%`;
   }
+  // Reinversión en tramos (interés compuesto): se muestra el esquema y se
+  // compara con la caución simple y con el FCI de liquidez.
+  const costs = getBrokerCosts();
+  const curve = (ZETA_CONFIG.marketRates && ZETA_CONFIG.marketRates.caucionByDays) || {};
+  const reinv = costs.caucion.reinversion && typeof calcCaucionReinversion === 'function'
+    ? calcCaucionReinversion(currentCapital, days, curve, getCaucionFees()) : null;
+  if (reinv && label && quote && quote.tnaNeta != null) {
+    const fciTna = ZETA_CONFIG.marketRates.fciTNA;
+    const fci = typeof calcFciSimple === 'function' ? calcFciSimple(currentCapital, days, fciTna) : null;
+    const mejora = reinv.tramos.length > 1 && reinv.tnaNeta > quote.tnaNeta + 0.005;
+    const best = reinv.tramos.length === 1 ? 'un solo tramo' : (mejora ? 'conviene reinvertir' : 'conviene simple');
+    const vsFci = fci && fci.tnaNeta != null
+      ? (Math.max(reinv.tnaNeta, quote.tnaNeta) > fci.tnaNeta ? 'gana al FCI' : 'pierde con el FCI') : '';
+    label.textContent += ` · reinv. ${reinv.esquema}: ${formatLecapTna(reinv.tnaNeta)}% (TEA ${formatLecapTna(reinv.tea)}%) · ${best}${vsFci ? ' · ' + vsFci : ''}`;
+    if (badge && mejora) badge.textContent = `${formatLecapTna(reinv.tnaNeta)}%`;
+  }
   // Solo la caución toma la TNA del plazo. LECAP, FCI y plazo fijo conservan la suya.
   if (selectedInstrument === 'caucion') {
     activeTNA = tna;
@@ -1199,7 +1215,11 @@ function getBrokerCosts() {
       derechosPct: numberOr(lecap.derechosPct, numberOr(legacy.derechosPct, 0.001))
     },
     caucion: {
-      comisionPct90: numberOr(caucion.comisionPct90, 0.50),
+      broker: caucion.broker || '',
+      arancelTnaPct: numberOr(((caucion.porBroker || {})[caucion.broker] || {}).arancelTnaPct,
+        numberOr(caucion.arancelTnaPct != null ? caucion.arancelTnaPct : (caucion.comisionTnaPct != null ? caucion.comisionTnaPct : caucion.comisionPct90), 1.80)),
+      reinversion: caucion.reinversion !== false,
+      derechosBase: caucion.derechosBase || 'mayor',
       aplicaIva: caucion.aplicaIva !== false,
       derechosPct90: numberOr(caucion.derechosPct90, 0.045),
       derechosConIva: caucion.derechosConIva !== false
@@ -1224,7 +1244,8 @@ function getLecapFees() {
 function getCaucionFees() {
   const costs = getBrokerCosts();
   return {
-    comisionPct90: costs.caucion.comisionPct90,
+    arancelTnaPct: costs.caucion.arancelTnaPct,
+    derechosBase: costs.caucion.derechosBase,
     aplicaIva: costs.caucion.aplicaIva,
     iva: costs.iva,
     derechosPct90: costs.caucion.derechosPct90,
@@ -1289,7 +1310,7 @@ function initTaxToggles() {
   const summary = document.getElementById('broker-cost-summary');
   if (!summary) return;
   const costs = getBrokerCosts();
-  summary.textContent = `Letra: compra ${formatPercentPoints(costs.lecap.comisionPct)} + IVA, sin venta. Derechos BYMA ${formatPercentPoints(costs.lecap.derechosPct)}, sin IVA. Caución: ${formatPercentPoints(costs.caucion.comisionPct90)} cada 90 días + IVA y derechos ${formatPercentPoints(costs.caucion.derechosPct90)} + IVA. FCI: sin comisión de entrada ni de salida. Honorarios ${formatPercentPoints(costs.fci.honorariosAnualesPct)} ya en la cuotaparte.`;
+  summary.textContent = `Letra: compra ${formatPercentPoints(costs.lecap.comisionPct)} + IVA, sin venta. Derechos BYMA ${formatPercentPoints(costs.lecap.derechosPct)}, sin IVA. Caución: ${costs.caucion.broker ? costs.caucion.broker + ' ' : ''}${formatPercentPoints(costs.caucion.arancelTnaPct)} TNA + IVA y derechos ${formatPercentPoints(costs.caucion.derechosPct90)} + IVA. FCI: sin comisión de entrada ni de salida. Honorarios ${formatPercentPoints(costs.fci.honorariosAnualesPct)} ya en la cuotaparte.`;
 }
 
 function calculateYield() {

@@ -101,7 +101,7 @@ TNA = `(payoff / precio - 1) * 365 / días`. TEA y TIR (un solo pago) = `(payoff
 
 ## Comisiones, impuesto al cheque y FCI
 
-`brokerCosts` en `config.js` tiene la comisión de Balanz (letras 0,10% con IVA, una sola compra; caución colocadora en pesos 0,50% prorrateada cada 90 días, con IVA) y los derechos BYMA de agosto 2026 (letras contado PPT 0,001%, sin IVA; caución 0,045% proporcional hasta 90 días, sobre el mayor valor, más IVA). La pantalla muestra TNA bruta, TNA neta y el interés en pesos. El descuento de cheques ya trae derechos y arancel: no se le suma esta tabla.
+`brokerCosts` en `config.js` tiene la comisión de Balanz (letras 0,10% con IVA, una sola compra; caución colocadora en pesos: arancel como TNA por broker en `brokerCosts.caucion.porBroker`, por defecto IOL 1,80% TNA confirmado con boleta, Balanz 0,50% pendiente, devengado por días/365, con IVA; la caución también se calcula con reinversión en tramos de 7 días, o de 3 si el plazo es de 3 días o menos, y se compara con la caución simple y el FCI) y los derechos BYMA de agosto 2026 (letras contado PPT 0,001%, sin IVA; caución 0,045% proporcional hasta 90 días, sobre el mayor valor, más IVA). La pantalla muestra TNA bruta, TNA neta y el interés en pesos. El descuento de cheques ya trae derechos y arancel: no se le suma esta tabla.
 
 El impuesto de la Ley 25.413 usa 0,6% de débito y 0,6% de crédito (Decreto 380/2001, art. 7). Arranca apagado porque la transferencia entre cuentas del mismo titular está exenta (Decreto 301/2021). El plazo fijo del mismo banco no lo paga. "La plata queda en el broker al vencimiento" saca el crédito de la vuelta. El pago a cuenta de Ganancias depende de la categoría de la MiPyME y no se resta.
 

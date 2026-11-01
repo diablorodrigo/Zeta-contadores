@@ -9,9 +9,12 @@
  *   Letras: 0,0010%. Caución (públicos y privados): 0,0450%, referencia 06,
  *   proporcional al plazo hasta 90 días y sobre el mayor valor, más IVA.
  *
- * Caución colocadora en pesos (Balanz, tarifario 2026, "hasta 0,50%"
- * prorrateado cada 90 días):
- *   comision = monto * (0,50/100) * (dias/90) * (1+IVA)
+ * Caución colocadora en pesos: comisión de 0,50% expresada como TNA
+ * (anual), según el criterio operativo de Zeta Finance. Se devenga por días:
+ *   comision = monto * (0,50/100) * (dias/365) * (1+IVA)
+ * Ojo: el tarifario web de Balanz dice "hasta 0.50% con detalle de prorrata
+ * (cada 90 días)". Si el boleto real cobrara por 90 días, cambiar la base.
+ * El derecho BYMA sí es proporcional al plazo hasta 90 días (ver arriba).
  *
  * FCI de mercado de dinero: sin comisión de suscripción ni de rescate
  * (ficha CAFCI de Balanz Capital Money Market, clase A: 0% / 0% / 0%).
@@ -45,7 +48,7 @@ function calcCaucionNeta(monto, dias, tnaBruta, fees) {
   var safeMonto = Number(monto);
   var safeDias = Number(dias);
   var safeTna = Number(tnaBruta);
-  var comisionPct90 = Number(fees && fees.comisionPct90);
+  var comisionTnaPct = Number(fees && (fees.arancelTnaPct != null ? fees.arancelTnaPct : (fees.comisionTnaPct != null ? fees.comisionTnaPct : fees.comisionPct90)));
   var derechosPct90 = Number(fees && fees.derechosPct90);
   var iva = Number(fees && fees.iva);
   var aplicaIva = !!(fees && fees.aplicaIva);
@@ -54,7 +57,7 @@ function calcCaucionNeta(monto, dias, tnaBruta, fees) {
   var montoOk = isFinite(safeMonto) && safeMonto >= 0;
   var diasOk = isFinite(safeDias) && safeDias > 0;
   var tnaOk = isFinite(safeTna);
-  var comisionOk = isFinite(comisionPct90) && comisionPct90 >= 0;
+  var comisionOk = isFinite(comisionTnaPct) && comisionTnaPct >= 0;
   var derechosOk = isFinite(derechosPct90) && derechosPct90 >= 0;
   var ivaOk = (!aplicaIva && !derechosConIva) || (isFinite(iva) && iva >= 0);
 
@@ -72,8 +75,10 @@ function calcCaucionNeta(monto, dias, tnaBruta, fees) {
   if (!montoOk || !diasOk || !tnaOk || !comisionOk || !derechosOk || !ivaOk) return empty;
 
   var interesBruto = safeMonto * (safeTna / 100) * (safeDias / 365);
-  var comisionPesos = safeMonto * (comisionPct90 / 100) * (safeDias / 90) * (aplicaIva ? (1 + iva) : 1);
-  var mayor = Math.max(safeMonto, safeMonto + interesBruto);
+  var comisionPesos = safeMonto * (comisionTnaPct / 100) * (safeDias / 365) * (aplicaIva ? (1 + iva) : 1);
+  // Base del derecho: 'contado' reproduce la boleta IOL (0,045% x d/90 sobre
+  // el capital); 'mayor' usa el mayor valor de la operación.
+  var mayor = (fees && fees.derechosBase === 'contado') ? safeMonto : Math.max(safeMonto, safeMonto + interesBruto);
   var diasDerecho = Math.min(safeDias, 90);
   var derechosPesos = mayor * (derechosPct90 / 100) * (diasDerecho / 90) * (derechosConIva ? (1 + iva) : 1);
   var interes = interesBruto - comisionPesos - derechosPesos;
@@ -88,7 +93,8 @@ function calcCaucionNeta(monto, dias, tnaBruta, fees) {
     total: safeMonto + interes,
     comisionPesos: comisionPesos,
     derechosPesos: derechosPesos,
-    comisionPct90: comisionPct90,
+    comisionTnaPct: comisionTnaPct,
+    arancelTnaPct: comisionTnaPct,
     derechosPct90: derechosPct90
   };
 }
@@ -261,10 +267,77 @@ function tnaFromCuotapartes(rows, windowDays) {
   };
 }
 
+
+/**
+ * Caución con reinversión (interés compuesto). Tramos de 7 días y un tramo
+ * final con lo que sobra; plazos de 3 días o menos van en tramos de 3:
+ *   3 -> [3], 7 -> [7], 10 -> [7,3], 15 -> [7,7,1], 30 -> [7,7,7,7,2].
+ * Cada tramo usa la TNA bruta del plazo más cercano de la curva (si no hay
+ * ese plazo exacto, el mayor plazo disponible que no lo supere; si no, el
+ * menor) y paga sus propios costos. El capital crece tramo a tramo.
+ */
+function caucionTramos(dias) {
+  var d = Math.floor(Number(dias));
+  if (!isFinite(d) || d <= 0) return [];
+  var paso = d <= 3 ? 3 : 7;
+  if (d < paso) return [d];
+  var out = [];
+  while (d >= paso) { out.push(paso); d -= paso; }
+  if (d > 0) out.push(d);
+  return out;
+}
+
+function caucionCurveRate(curve, dias) {
+  var keys = Object.keys(curve || {}).map(Number).filter(function (k) {
+    return isFinite(k) && k > 0 && isFinite(Number(curve[k]));
+  }).sort(function (a, b) { return a - b; });
+  if (!keys.length) return null;
+  var pick = keys[0];
+  for (var i = 0; i < keys.length; i++) if (keys[i] <= dias) pick = keys[i];
+  return { dias: pick, tna: Number(curve[pick]) };
+}
+
+function calcCaucionReinversion(monto, dias, curve, fees) {
+  var tramos = caucionTramos(dias);
+  var capital = Number(monto);
+  if (!tramos.length || !isFinite(capital) || capital <= 0) return null;
+  var detalle = [];
+  var costos = 0;
+  var bruto = 0;
+  for (var i = 0; i < tramos.length; i++) {
+    var ref = caucionCurveRate(curve, tramos[i]);
+    if (!ref) return null;
+    var q = calcCaucionNeta(capital, tramos[i], ref.tna, fees);
+    if (q.interes == null) return null;
+    var costo = q.interesBruto - q.interes;
+    detalle.push({ dias: tramos[i], tnaBruta: ref.tna, plazoCurva: ref.dias, capital: capital, interes: q.interes, costos: costo });
+    costos += costo;
+    bruto += q.interesBruto;
+    capital += q.interes;
+  }
+  var interes = capital - Number(monto);
+  var totalDias = tramos.reduce(function (a, b) { return a + b; }, 0);
+  return {
+    monto: Number(monto),
+    dias: totalDias,
+    esquema: tramos.join('+'),
+    tramos: detalle,
+    interesBruto: bruto,
+    costos: costos,
+    interes: interes,
+    total: capital,
+    tnaNeta: (interes / Number(monto)) * (365 / totalDias) * 100,
+    tea: (Math.pow(capital / Number(monto), 365 / totalDias) - 1) * 100
+  };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     lecapPurchaseCostFraction: lecapPurchaseCostFraction,
     calcCaucionNeta: calcCaucionNeta,
+    caucionTramos: caucionTramos,
+    caucionCurveRate: caucionCurveRate,
+    calcCaucionReinversion: calcCaucionReinversion,
     calcFciSimple: calcFciSimple,
     applyImpuestoBancario: applyImpuestoBancario,
     withBankTax: withBankTax,
