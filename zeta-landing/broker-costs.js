@@ -9,9 +9,12 @@
  *   Letras: 0,0010%. Caución (públicos y privados): 0,0450%, referencia 06,
  *   proporcional al plazo hasta 90 días y sobre el mayor valor, más IVA.
  *
- * Caución colocadora en pesos (Balanz, tarifario 2026, "hasta 0,50%"
- * prorrateado cada 90 días):
- *   comision = monto * (0,50/100) * (dias/90) * (1+IVA)
+ * Caución colocadora en pesos: comisión de 0,50% expresada como TNA
+ * (anual), según el criterio operativo de Zeta Finance. Se devenga por días:
+ *   comision = monto * (0,50/100) * (dias/365) * (1+IVA)
+ * Ojo: el tarifario web de Balanz dice "hasta 0.50% con detalle de prorrata
+ * (cada 90 días)". Si el boleto real cobrara por 90 días, cambiar la base.
+ * El derecho BYMA sí es proporcional al plazo hasta 90 días (ver arriba).
  *
  * FCI de mercado de dinero: sin comisión de suscripción ni de rescate
  * (ficha CAFCI de Balanz Capital Money Market, clase A: 0% / 0% / 0%).
@@ -45,7 +48,7 @@ function calcCaucionNeta(monto, dias, tnaBruta, fees) {
   var safeMonto = Number(monto);
   var safeDias = Number(dias);
   var safeTna = Number(tnaBruta);
-  var comisionPct90 = Number(fees && fees.comisionPct90);
+  var comisionTnaPct = Number(fees && (fees.comisionTnaPct != null ? fees.comisionTnaPct : fees.comisionPct90));
   var derechosPct90 = Number(fees && fees.derechosPct90);
   var iva = Number(fees && fees.iva);
   var aplicaIva = !!(fees && fees.aplicaIva);
@@ -54,7 +57,7 @@ function calcCaucionNeta(monto, dias, tnaBruta, fees) {
   var montoOk = isFinite(safeMonto) && safeMonto >= 0;
   var diasOk = isFinite(safeDias) && safeDias > 0;
   var tnaOk = isFinite(safeTna);
-  var comisionOk = isFinite(comisionPct90) && comisionPct90 >= 0;
+  var comisionOk = isFinite(comisionTnaPct) && comisionTnaPct >= 0;
   var derechosOk = isFinite(derechosPct90) && derechosPct90 >= 0;
   var ivaOk = (!aplicaIva && !derechosConIva) || (isFinite(iva) && iva >= 0);
 
@@ -72,7 +75,7 @@ function calcCaucionNeta(monto, dias, tnaBruta, fees) {
   if (!montoOk || !diasOk || !tnaOk || !comisionOk || !derechosOk || !ivaOk) return empty;
 
   var interesBruto = safeMonto * (safeTna / 100) * (safeDias / 365);
-  var comisionPesos = safeMonto * (comisionPct90 / 100) * (safeDias / 90) * (aplicaIva ? (1 + iva) : 1);
+  var comisionPesos = safeMonto * (comisionTnaPct / 100) * (safeDias / 365) * (aplicaIva ? (1 + iva) : 1);
   var mayor = Math.max(safeMonto, safeMonto + interesBruto);
   var diasDerecho = Math.min(safeDias, 90);
   var derechosPesos = mayor * (derechosPct90 / 100) * (diasDerecho / 90) * (derechosConIva ? (1 + iva) : 1);
@@ -88,7 +91,7 @@ function calcCaucionNeta(monto, dias, tnaBruta, fees) {
     total: safeMonto + interes,
     comisionPesos: comisionPesos,
     derechosPesos: derechosPesos,
-    comisionPct90: comisionPct90,
+    comisionTnaPct: comisionTnaPct,
     derechosPct90: derechosPct90
   };
 }
