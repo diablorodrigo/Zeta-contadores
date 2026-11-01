@@ -83,17 +83,20 @@ test('sin la exención, el débito y el crédito bajan la TNA y la vuelta se pue
   assert.ok(soloIda.tnaNeta < letra.tnaNeta);
 });
 
-test('la caución descuenta la prorrata de 90 días y el derecho BYMA con IVA', () => {
+test('la caución descuenta la comisión 0,50% TNA y el derecho BYMA prorrateado a 90 días, con IVA', () => {
   const quote = calcCaucionNeta(CAPITAL, 7, 21.5, {
-    comisionPct90: 0.50,
+    comisionTnaPct: 0.50,
     aplicaIva: true,
     iva: 0.21,
     derechosPct90: 0.045,
     derechosConIva: true
   });
-  assert.ok(Math.abs(quote.comisionPesos - 2352.78) < 0.05);
+  assert.ok(Math.abs(quote.comisionPesos - CAPITAL * 0.005 * 7 / 365 * 1.21) < 0.01);
   assert.ok(Math.abs(quote.derechosPesos - 212.62) < 0.05);
-  assert.ok(Math.abs(quote.tnaNeta - 18.82) < 0.02);
+  assert.ok(Math.abs(quote.tnaNeta - 20.67) < 0.02);
+  // Config vieja con comisionPct90 se interpreta igual, como TNA.
+  const legacy = calcCaucionNeta(CAPITAL, 7, 21.5, { comisionPct90: 0.50, aplicaIva: true, iva: 0.21, derechosPct90: 0.045, derechosConIva: true });
+  assert.ok(Math.abs(legacy.comisionPesos - quote.comisionPesos) < 0.001);
   assert.ok(quote.interes < quote.interesBruto);
 });
 

@@ -98,7 +98,7 @@ const ZETA_CONFIG = {
   // iva en decimal (0.21 = 21%). Las fórmulas están en broker-costs.js.
   // Letras: una sola compra, sin venta. Derechos BYMA agosto 2026, contado
   // PPT letras 0,0010%, sin IVA (título público).
-  // Caución colocadora en pesos: 0,50% prorrateado cada 90 días, más IVA.
+  // Caución colocadora en pesos: comisión 0,50% TNA (anual, por días/365), más IVA.
   // Derecho BYMA de caución 0,0450% proporcional hasta 90 días, sobre el
   // mayor valor, más IVA.
   brokerCosts: {
@@ -111,7 +111,7 @@ const ZETA_CONFIG = {
       derechosPct: 0.001
     },
     caucion: {
-      comisionPct90: 0.50,
+      comisionTnaPct: 0.50, // TNA anual, no por 90 días
       aplicaIva: true,
       derechosPct90: 0.045,
       derechosConIva: true

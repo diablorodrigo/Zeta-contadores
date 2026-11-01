@@ -1199,7 +1199,7 @@ function getBrokerCosts() {
       derechosPct: numberOr(lecap.derechosPct, numberOr(legacy.derechosPct, 0.001))
     },
     caucion: {
-      comisionPct90: numberOr(caucion.comisionPct90, 0.50),
+      comisionTnaPct: numberOr(caucion.comisionTnaPct != null ? caucion.comisionTnaPct : caucion.comisionPct90, 0.50),
       aplicaIva: caucion.aplicaIva !== false,
       derechosPct90: numberOr(caucion.derechosPct90, 0.045),
       derechosConIva: caucion.derechosConIva !== false
@@ -1224,7 +1224,7 @@ function getLecapFees() {
 function getCaucionFees() {
   const costs = getBrokerCosts();
   return {
-    comisionPct90: costs.caucion.comisionPct90,
+    comisionTnaPct: costs.caucion.comisionTnaPct,
     aplicaIva: costs.caucion.aplicaIva,
     iva: costs.iva,
     derechosPct90: costs.caucion.derechosPct90,
@@ -1289,7 +1289,7 @@ function initTaxToggles() {
   const summary = document.getElementById('broker-cost-summary');
   if (!summary) return;
   const costs = getBrokerCosts();
-  summary.textContent = `Letra: compra ${formatPercentPoints(costs.lecap.comisionPct)} + IVA, sin venta. Derechos BYMA ${formatPercentPoints(costs.lecap.derechosPct)}, sin IVA. Caución: ${formatPercentPoints(costs.caucion.comisionPct90)} cada 90 días + IVA y derechos ${formatPercentPoints(costs.caucion.derechosPct90)} + IVA. FCI: sin comisión de entrada ni de salida. Honorarios ${formatPercentPoints(costs.fci.honorariosAnualesPct)} ya en la cuotaparte.`;
+  summary.textContent = `Letra: compra ${formatPercentPoints(costs.lecap.comisionPct)} + IVA, sin venta. Derechos BYMA ${formatPercentPoints(costs.lecap.derechosPct)}, sin IVA. Caución: ${formatPercentPoints(costs.caucion.comisionTnaPct)} TNA + IVA y derechos ${formatPercentPoints(costs.caucion.derechosPct90)} + IVA. FCI: sin comisión de entrada ni de salida. Honorarios ${formatPercentPoints(costs.fci.honorariosAnualesPct)} ya en la cuotaparte.`;
 }
 
 function calculateYield() {
