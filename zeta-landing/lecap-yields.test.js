@@ -312,3 +312,10 @@ test('si las dos fuentes vienen vacías no se inventa una curva', () => {
   });
   assert.equal(curve, null);
 });
+
+test('un sábado la referencia de 30 días sigue siendo S30N6 aunque la liquidación sea el lunes', () => {
+  // Sábado 31/10/2026: liquida lunes 2/11, S30N6 tiene 28 días de liquidación pero 30 corridos.
+  const curve = buildLecapCurve({ data912Rows: DATA912_FRIDAY, now: new Date('2026-10-31T23:00:00.000Z') });
+  assert.equal(curve.reference.ticker, 'S30N6');
+  assert.equal(curve.reference.diasHoy, 30);
+});
