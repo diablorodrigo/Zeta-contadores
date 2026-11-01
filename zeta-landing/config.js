@@ -148,6 +148,9 @@ const ZETA_CONFIG = {
   // última foto fechada (cheque-market.js).
   chequeDiscount: {
     bankLabel: "Banco Macro",
+    // Tramos verificados en el PDF oficial de Macro (Banca Internet/App), "Fecha Vigencia: 28/10/2026":
+    // https://www.macro.com.ar/1517360615001/tasas_plazo_fijo.pdf  ·  30-35 días: 19,5% hasta $4.999.999,99; 20% desde $5 M.
+    verificadoAl: "2026-10-28",
     bank: {
       tnaDesc: 27.5
     },
@@ -193,6 +196,9 @@ const ZETA_CONFIG = {
   // La membresía mensual no se prorratea.
   macroVsLetra: {
     bankLabel: "Banco Macro",
+    // Tramos verificados en el PDF oficial de Macro (Banca Internet/App), "Fecha Vigencia: 28/10/2026":
+    // https://www.macro.com.ar/1517360615001/tasas_plazo_fijo.pdf  ·  30-35 días: 19,5% hasta $4.999.999,99; 20% desde $5 M.
+    verificadoAl: "2026-10-28",
     minDias: 30,
     // La letra calza si el vencimiento queda a lo sumo a estos días del plazo.
     maxGapDays: 15,

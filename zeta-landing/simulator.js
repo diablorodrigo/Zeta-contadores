@@ -19,6 +19,7 @@ let lecapMode = 'letra';
 let selectedLecapTicker = null;
 let lecapQuoteMeta = null;
 let liveMacroBands = null;
+let liveMacroBandsAt = null;
 let activeTNA = 21.5;
 
 // Inicialización al cargar la página
@@ -399,6 +400,7 @@ function applyFetchedRates(newRates, timestamp, origin, meta) {
   }
   if (Array.isArray(newRates.macroPlazoFijoBands) && newRates.macroPlazoFijoBands.length) {
     liveMacroBands = newRates.macroPlazoFijoBands;
+    liveMacroBandsAt = timestamp || new Date();
   }
   if (newRates.usdRateAnnual) ZETA_CONFIG.marketRates.usdRateAnnual = newRates.usdRateAnnual;
   if (newRates.bcra && Array.isArray(newRates.bcra.series) && newRates.bcra.series.length) {
@@ -766,7 +768,7 @@ function selectInstrument(inst) {
   } else if (inst === 'fci') {
     activeTNA = ZETA_CONFIG.marketRates.fciTNA;
   } else if (inst === 'plazofijo') {
-    activeTNA = ZETA_CONFIG.marketRates.plazoFijoTNA;
+    activeTNA = macroPlazoFijoRef(currentCapital, currentPlazo).tna;
   }
 
   if (inst !== 'cheques' && inst !== 'macroLetra') {
@@ -824,15 +826,6 @@ function updateInstrumentRates() {
     ? liquidityPlazo
     : currentPlazo;
   const fciQuote = netQuote('fci', rates.fciTNA, horizon);
-  document.getElementById('rate-badge-plazofijo').textContent = `${rates.plazoFijoTNA.toFixed(1)}%`;
-  const pfSource = document.getElementById('plazofijo-source-label');
-  if (pfSource) {
-    const pfd = rates.plazoFijoDetails || {};
-    const live = pfd.fuente === 'bcra';
-    pfSource.textContent = live
-      ? `BCRA dep. 30 días${pfd.fecha ? ' · ' + shortVencimiento(pfd.fecha) : ''}`
-      : 'referencia (sin actualizar)';
-  }
   const fciBadge = document.getElementById('rate-badge-fci');
   if (fciBadge) {
     fciBadge.textContent = `${formatLecapTna(fciQuote && fciQuote.tnaNeta != null ? fciQuote.tnaNeta : rates.fciTNA)}%`;
@@ -862,6 +855,11 @@ function updateInstrumentRates() {
 
 function refreshLecapCards() {
   const rates = ZETA_CONFIG.marketRates;
+  const pfRef = macroPlazoFijoRef(currentCapital, currentPlazo);
+  const pfBadge = document.getElementById('rate-badge-plazofijo');
+  if (pfBadge) pfBadge.textContent = `${pfRef.tna.toFixed(1)}%`;
+  const pfSource = document.getElementById('plazofijo-source-label');
+  if (pfSource) pfSource.textContent = pfRef.label;
   const activeLetter = activeLecapLetter();
   const lecapQuote = netQuote('lecap', activeLetter.tna, activeLetter.dias);
   const lecapBadge = document.getElementById('rate-badge-lecap');
@@ -1415,7 +1413,8 @@ function renderComparisonTable(currentRendimiento) {
   
   // Plazo fijo: requiere min 30 días
   const pfEligible = currentPlazo >= 30;
-  const yieldPlazoFijo = Math.round(currentCapital * (rates.plazoFijoTNA / 100) * (currentPlazo / 365));
+  const pfRef = macroPlazoFijoRef(currentCapital, currentPlazo);
+  const yieldPlazoFijo = Math.round(currentCapital * (pfRef.tna / 100) * (currentPlazo / 365));
   const lecapTicker = letter ? letter.ticker : (rates.lecapDetails?.ticker || "S30N6");
   const lecapVto = letter ? (letter.vencimiento || "") : (rates.lecapDetails?.vencimiento || "30/11/2026");
   const lecapDayNote = lecapDays === currentPlazo
@@ -1485,7 +1484,7 @@ function renderComparisonTable(currentRendimiento) {
         <div>
           <div class="flex items-center gap-1.5">
             <span class="text-xs font-bold text-slate-200">Plazo Fijo Banco</span>
-            <span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono font-bold">${rates.plazoFijoTNA}% TNA</span>
+            <span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono font-bold">${pfRef.tna}% TNA</span>
           </div>
           <span class="text-[11px] ${pfEligible ? 'text-slate-400' : 'text-amber-400/90 font-medium'}">
             ${pfEligible ? 'Inmovilizado por 30 días' : '⚠️ No disponible para menos de 30 días'}
@@ -1973,21 +1972,16 @@ function renderChequeWait(scenario) {
         : `Respaldo cargado, balde de ${caucion.days} días, TNA ${formatPercentPoints(caucion.tna)}. BYMA no trajo una curva en esta carga${caucion.days !== scenario.plazo ? '. No coincide con el plazo del cheque: se usa esta TNA sobre esos días.' : '.'}`)
   }));
 
-  const pf = ZETA_CONFIG.marketRates && typeof bcraSeriesByKey === 'function'
-    ? bcraSeriesByKey(ZETA_CONFIG.marketRates.bcra, 'pf30')
-    : null;
-  const pfTna = pf && pf.valor != null ? pf.valor : (ZETA_CONFIG.marketRates && ZETA_CONFIG.marketRates.plazoFijoTNA);
-  const pfStale = pf ? pf.stale : true;
-  const pfWhen = pf && pf.fecha ? formatIsoDateAr(pf.fecha) : '';
+  const pfRef = macroPlazoFijoRef(scenario.monto, scenario.plazo);
+  const pfTna = pfRef.tna;
+  const pfStale = !pfRef.live;
   rows.push(renderWaitAlternative({
     title: 'Plazo fijo',
     pick: pfTna == null ? null : { days: 30, tna: pfTna, stale: pfStale },
     quote,
     plazo: scenario.plazo,
     nominal: scenario.monto,
-    sourceLine: pf
-      ? `BCRA serie ${pf.id}${pfWhen ? ' · dato del ' + pfWhen : ''}${pf.stale ? ' · último valor cargado' : ''}. Es la tasa a 30 días, aplicada al plazo del cheque.`
-      : `Tasa de respaldo ${formatPercentPoints(pfTna)}, aplicada al plazo del cheque.`
+    sourceLine: `${pfRef.label}. Tramo por monto, aplicado al plazo del cheque.`
   }));
 
   const lecaps = (ZETA_CONFIG.marketRates && ZETA_CONFIG.marketRates.chequeLecaps) || null;
@@ -2297,6 +2291,25 @@ function syncLecapHorizonUI(pick) {
       : 'border-slate-700 bg-slate-900 text-slate-300';
     return `<button type="button" data-letra="${escapeHtml(letter.ticker)}" onclick="selectLecapLetra('${escapeHtml(letter.ticker)}')" class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border ${cls}">${escapeHtml(letter.ticker)} · ${escapeHtml(vto)} · ${letter.diasHoy}d</button>`;
   }).join('');
+}
+
+// Plazo fijo de referencia: Banco Macro según monto (y plazo, mínimo 30 días).
+// En vivo vía ArgentinaDatos (tramos BCRA de Macro); si no, los tramos de config.js.
+function macroPlazoFijoRef(monto, dias) {
+  const live = Array.isArray(liveMacroBands) && liveMacroBands.length > 0;
+  const plazo = Math.max(30, Number(dias) || 30);
+  const band = typeof pickMacroBand === 'function' ? pickMacroBand(getMacroBands(), Number(monto) || 1, plazo) : null;
+  const tna = band ? Number(band.tna) : Number(ZETA_CONFIG.marketRates.plazoFijoTNA);
+  const cfg = ZETA_CONFIG.macroVsLetra || {};
+  let when = '';
+  if (live && liveMacroBandsAt) {
+    const d = new Date(liveMacroBandsAt);
+    if (!isNaN(d.getTime())) when = d.toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: '2-digit', month: '2-digit' });
+  }
+  const label = live
+    ? `Banco Macro · ArgentinaDatos${when ? ' ' + when : ''}`
+    : `Banco Macro · referencia al ${shortVencimiento(cfg.verificadoAl || '')}`;
+  return { tna, live, label };
 }
 
 function getMacroBands() {
